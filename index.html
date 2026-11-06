@@ -282,6 +282,22 @@ footer{
 </div>
 </section>
 
+<section class="panel no-print" id="monthlyArchivePanel">
+<h2 class="section-heading"><span class="number">★</span> السجل الشهري التراكمي</h2>
+<div class="grid two" style="align-items:end">
+ <div class="field"><label for="archiveMonth">الشهر الجاري</label><input type="month" id="archiveMonth"></div>
+ <div class="field"><label>حالة الحفظ</label><div id="archiveStatus" class="hint" style="padding:10px;background:#eef6ff;border-radius:8px">يتم حفظ مسودة الإدخال تلقائياً على هذا الجهاز.</div></div>
+</div>
+<div style="display:flex;gap:9px;flex-wrap:wrap;margin-top:12px">
+ <button class="btn btn-primary" type="button" onclick="saveMonthlyBatch()">💾 حفظ الدفعة الحالية للشهر</button>
+ <button class="btn btn-light" type="button" onclick="refreshMonthlyStatus()">↻ تحديث ملخص الشهر</button>
+ <button class="btn btn-gold" type="button" onclick="downloadMonthlyBackup()">⬇ نسخة احتياطية للشهر</button>
+ <label class="btn btn-light" style="cursor:pointer">⬆ استعادة نسخة احتياطية<input type="file" accept="application/json,.json" onchange="restoreMonthlyBackup(event)" hidden></label>
+</div>
+<p class="hint" style="line-height:1.8;margin-top:10px">أضف المعلومات على دفعات خلال الشهر، ثم اضغط «حفظ الدفعة الحالية». ستُضاف إلى السجل دون حذف الدفعات السابقة، ويمكنك إفراغ النموذج لإدخال أحداث جديدة. عند التصدير تُجمع الدفعات المحفوظة مع أي معلومات موجودة حالياً في النموذج.</p>
+<div id="monthlySummary" class="hint" style="margin-top:8px"></div>
+</section>
+
 <section class="panel">
 <h2 class="section-heading"><span class="number">2</span> المشاريع الإغاثية</h2>
 <div class="field" style="max-width:300px;margin-bottom:17px">
@@ -1222,6 +1238,7 @@ function validateReport(){
 
     for(let i=0;i<report.relief.length;i++){
         const item=report.relief[i];
+        if(!item.projectName&&!item.materialType&&!item.donor&&!item.totalCount&&!item.beneficiaryCount&&!item.targetGroup&&!item.absentCount&&!item.date&&!item.amount&&!item.people.length)continue;
 
         if(!item.projectName){
             alert(`يرجى إدخال اسم المشروع أو التوزيعة في السجل رقم ${i+1}.`);
@@ -1237,6 +1254,7 @@ function validateReport(){
 
     for(let i=0;i<report.visits.length;i++){
         const item=report.visits[i];
+        if(!item.entity&&!item.date&&!item.outcomes&&!item.participants)continue;
 
         if(!item.entity||!item.date){
             alert(`يرجى استكمال الجهة والتاريخ في الزيارة رقم ${i+1}.`);
@@ -1246,6 +1264,7 @@ function validateReport(){
 
     for(let i=0;i<report.implemented.length;i++){
         const item=report.implemented[i];
+        if(!item.projectName&&!item.place&&!item.donor&&!item.attendance&&!item.absence&&!item.date&&!item.people.length)continue;
 
         if(!item.projectName||!item.place||!item.date){
             alert(`يرجى إدخال اسم المشروع والمكان وتاريخ التنفيذ في المشروع المنفذ رقم ${i+1}.`);
@@ -1260,7 +1279,9 @@ function validateReport(){
     }
 
     for(let i=0;i<report.ongoing.length;i++){
-        if(!report.ongoing[i].projectName){
+        const ongoingItem=report.ongoing[i];
+        if(!ongoingItem.projectName&&!ongoingItem.materialType&&!ongoingItem.donor&&!ongoingItem.beneficiaryCount&&!ongoingItem.targetGroup&&!ongoingItem.executionDate)continue;
+        if(!ongoingItem.projectName){
             alert(`يرجى إدخال اسم المشروع قيد التنفيذ في السجل رقم ${i+1}.`);
             return false;
         }
@@ -1741,7 +1762,7 @@ async function exportWord(){
  catch(e){alert(e.message);return;}
  if(!validateReport())return;
  if(typeof JSZip==="undefined"){alert("تعذر تحميل مكتبة إنشاء DOCX. تحقق من اتصال الإنترنت.");return;}
- const report=normalizeReportDigits(getReportData());
+ const report=normalizeReportDigits(await getCumulativeReport());
  try{
   const zip=await JSZip.loadAsync(uploadedTemplate);const file=zip.file("word/document.xml");if(!file)throw new Error("ملف Word الداخلي غير موجود");
   const xml=await file.async("text");const doc=new DOMParser().parseFromString(xml,"application/xml");if(doc.getElementsByTagName("parsererror").length)throw new Error("تعذر قراءة بنية قالب Word");
@@ -1779,7 +1800,7 @@ async function exportWord(){
    ورقتان فقط بالاسمين المطلوبين
 ========================= */
 
-function exportExcel(){
+async function exportExcel(){
     if(!validateReport())return;
 
     if(typeof XLSX==="undefined"){
@@ -1787,7 +1808,7 @@ function exportExcel(){
         return;
     }
 
-    const report=normalizeReportDigits(getReportData());
+    const report=normalizeReportDigits(await getCumulativeReport());
 
     /*
       الورقة الأولى:
@@ -1981,6 +2002,179 @@ function exportExcel(){
 ========================= */
 
 
+
+/* =========================
+   السجل الشهري التراكمي - IndexedDB
+   يعمل محلياً على نفس المتصفح والجهاز
+========================= */
+const MONTH_DB_NAME="monthly_report_archive_v02";
+const MONTH_DB_STORE="months";
+let monthDbPromise=null;
+let draftSaveTimer=null;
+
+function openMonthDB(){
+ if(monthDbPromise)return monthDbPromise;
+ monthDbPromise=new Promise((resolve,reject)=>{
+  const req=indexedDB.open(MONTH_DB_NAME,1);
+  req.onupgradeneeded=()=>{const db=req.result;if(!db.objectStoreNames.contains(MONTH_DB_STORE))db.createObjectStore(MONTH_DB_STORE,{keyPath:"month"});};
+  req.onsuccess=()=>resolve(req.result);
+  req.onerror=()=>reject(req.error||new Error("تعذر فتح قاعدة البيانات المحلية"));
+ });
+ return monthDbPromise;
+}
+async function readMonthRecord(month){
+ const db=await openMonthDB();
+ return new Promise((resolve,reject)=>{
+  const tx=db.transaction(MONTH_DB_STORE,"readonly"),req=tx.objectStore(MONTH_DB_STORE).get(month);
+  req.onsuccess=()=>resolve(req.result||{month,batches:[],draft:null,meta:{}});
+  req.onerror=()=>reject(req.error);
+ });
+}
+async function writeMonthRecord(record){
+ const db=await openMonthDB();
+ return new Promise((resolve,reject)=>{
+  const tx=db.transaction(MONTH_DB_STORE,"readwrite");
+  tx.objectStore(MONTH_DB_STORE).put(record);
+  tx.oncomplete=()=>resolve(true);tx.onerror=()=>reject(tx.error);tx.onabort=()=>reject(tx.error);
+ });
+}
+function selectedMonth(){
+ const value=document.getElementById("archiveMonth")?.value||document.getElementById("reportDate")?.value||"";
+ return /^\d{4}-\d{2}/.test(value)?value.slice(0,7):getLocalDateString(new Date()).slice(0,7);
+}
+function reportHasEntries(r){
+ return ["relief","visits","implemented","ongoing","problems","suggestions"].some(k=>(r[k]||[]).some(x=>Object.values(x).some(v=>Array.isArray(v)?v.length>0:String(v??"").trim()!=="")));
+}
+function cleanReportEntries(r){
+ const x=JSON.parse(JSON.stringify(r));
+ x.relief=(x.relief||[]).filter(v=>v.projectName||v.materialType||v.donor||v.totalCount||v.beneficiaryCount||v.targetGroup||v.absentCount||v.date||v.amount||(v.people||[]).some(p=>p.name||p.id));
+ x.visits=(x.visits||[]).filter(v=>v.entity||v.date||v.outcomes||v.participants);
+ x.implemented=(x.implemented||[]).filter(v=>v.projectName||v.place||v.donor||v.attendance||v.absence||v.date||(v.people||[]).some(p=>p.name||p.id));
+ x.ongoing=(x.ongoing||[]).filter(v=>v.projectName||v.materialType||v.donor||v.beneficiaryCount||v.targetGroup||v.executionDate);
+ x.problems=(x.problems||[]).filter(v=>v.problem||v.solution);
+ x.suggestions=(x.suggestions||[]).filter(v=>v.suggestion);
+ return x;
+}
+function mergeReportParts(parts,meta){
+ const result={...meta,relief:[],visits:[],implemented:[],ongoing:[],problems:[],suggestions:[]};
+ parts.forEach(p=>{["relief","visits","implemented","ongoing","problems","suggestions"].forEach(k=>result[k].push(...(p[k]||[])));});
+ return result;
+}
+async function getCumulativeReport(){
+ const current=cleanReportEntries(getReportData()),month=selectedMonth(),record=await readMonthRecord(month);
+ const parts=[...(record.batches||[])];
+ if(reportHasEntries(current))parts.push(current);
+ const merged=mergeReportParts(parts,current);
+ merged.directorate=current.directorate||record.meta?.directorate||"";
+ merged.number=current.number||record.meta?.number||"";
+ merged.date=current.date||month+"-01";
+ merged.preparer=current.preparer||record.meta?.preparer||"";
+ return merged;
+}
+function setArchiveStatus(message,isError=false){
+ const el=document.getElementById("archiveStatus");if(!el)return;
+ el.textContent=message;el.style.background=isError?"#fff0e9":"#eef6ff";el.style.color=isError?"#9b3c25":"#315b43";
+}
+async function refreshMonthlyStatus(){
+ try{
+  const month=selectedMonth(),r=await readMonthRecord(month);
+  const totals={};["relief","visits","implemented","ongoing","problems","suggestions"].forEach(k=>totals[k]=(r.batches||[]).reduce((n,b)=>n+(b[k]?.length||0),0));
+  const all=Object.values(totals).reduce((a,b)=>a+b,0);
+  document.getElementById("monthlySummary").textContent=`${month}: ${r.batches?.length||0} دفعة محفوظة · ${all} سجل: ${totals.relief} إغاثي، ${totals.visits} زيارة، ${totals.implemented} فعالية/مشروع منفذ، ${totals.ongoing} قيد التنفيذ، ${totals.problems} مشكلة، ${totals.suggestions} مقترح.`;
+ }catch(e){setArchiveStatus("تعذر قراءة السجل المحلي: "+e.message,true);}
+}
+async function saveCurrentDraft(){
+ const date=document.getElementById("reportDate")?.value;
+ if(!date)return;
+ const month=selectedMonth(),record=await readMonthRecord(month);
+ record.draft=cleanReportEntries(getReportData());
+ record.meta={directorate:record.draft.directorate,number:record.draft.number,preparer:record.draft.preparer};
+ await writeMonthRecord(record);
+ setArchiveStatus("تم حفظ مسودة الإدخال تلقائياً على هذا الجهاز.");
+}
+function scheduleDraftSave(){
+ clearTimeout(draftSaveTimer);
+ draftSaveTimer=setTimeout(()=>saveCurrentDraft().catch(e=>setArchiveStatus("تعذر الحفظ التلقائي: "+e.message,true)),500);
+}
+function setField(card,name,value){
+ const el=card.querySelector(`[data-field="${name}"]`);if(el)el.value=value??"";
+}
+function restorePeople(card,type,people){
+ const box=card.querySelector(`[data-people-box="${type}"]`);if(!box)return;
+ const names=(people||[]).map(x=>x.name||"").join("\n"),ids=(people||[]).map(x=>x.id||"").join("\n");
+ box.querySelector(`[data-people-names="${type}"]`).value=names;
+ box.querySelector(`[data-people-ids="${type}"]`).value=ids;
+ renderPeopleRows(box,Math.max(5,(people||[]).length));
+ updatePeopleCount(box.querySelector(`[data-people-names="${type}"]`));
+}
+function clearEntryCards(){
+ ["reliefContainer","visitsContainer","implementedContainer","ongoingContainer","problemsContainer","suggestionsContainer"].forEach(id=>document.getElementById(id).innerHTML="");
+ reliefIndex=visitIndex=implementedIndex=ongoingIndex=problemIndex=suggestionIndex=0;
+ updateCounters();
+}
+function restoreReportToForm(r){
+ clearEntryCards();
+ (r.relief||[]).forEach(x=>{addRelief();const c=document.querySelector("#reliefContainer .relief-card:last-child");["projectName","materialType","donor","totalCount","beneficiaryCount","targetGroup","absentCount","directorate","date","amount"].forEach(k=>setField(c,k,x[k]));restorePeople(c,"beneficiary",x.people);});
+ (r.visits||[]).forEach(x=>{addVisit();const c=document.querySelector("#visitsContainer .visit-card:last-child");["entity","date","outcomes","participants"].forEach(k=>setField(c,k,x[k]));});
+ (r.implemented||[]).forEach(x=>{addImplemented();const c=document.querySelector("#implementedContainer .implemented-card:last-child");["projectName","place","donor","attendance","absence","date"].forEach(k=>setField(c,k,x[k]));restorePeople(c,"attendee",x.people);});
+ (r.ongoing||[]).forEach(x=>{addOngoing();const c=document.querySelector("#ongoingContainer .ongoing-card:last-child");["projectName","materialType","donor","beneficiaryCount","targetGroup","executionDate"].forEach(k=>setField(c,k,x[k]));});
+ (r.problems||[]).forEach(x=>{addProblem();const c=document.querySelector("#problemsContainer .problem-card:last-child");["problem","solution"].forEach(k=>setField(c,k,x[k]));});
+ (r.suggestions||[]).forEach(x=>{addSuggestion();setField(document.querySelector("#suggestionsContainer .suggestion-card:last-child"),"suggestion",x.suggestion);});
+ if(!(r.relief||[]).length)addRelief();if(!(r.visits||[]).length)addVisit();if(!(r.implemented||[]).length)addImplemented();if(!(r.ongoing||[]).length)addOngoing();if(!(r.problems||[]).length)addProblem();if(!(r.suggestions||[]).length)addSuggestion();
+ updateCounters();
+}
+async function saveMonthlyBatch(){
+ const month=selectedMonth(),current=cleanReportEntries(getReportData());
+ if(!reportHasEntries(current)){alert("لا توجد معلومات جديدة لحفظها. أضف سجلاً واحداً على الأقل أولاً.");return;}
+ const record=await readMonthRecord(month);
+ record.batches=record.batches||[];
+ record.batches.push(current);
+ record.meta={directorate:current.directorate,number:current.number,preparer:current.preparer};
+ record.draft=null;
+ await writeMonthRecord(record);
+ clearEntryCards();
+ addRelief();addVisit();addImplemented();addOngoing();addProblem();addSuggestion();
+ await refreshMonthlyStatus();
+ setArchiveStatus("تم حفظ الدفعة بنجاح، وأصبحت جاهزة لإضافات جديدة. السجلات السابقة محفوظة.");
+}
+async function loadMonthDraft(){
+ const month=selectedMonth(),record=await readMonthRecord(month);
+ if(record.meta){
+  if(record.meta.directorate)document.getElementById("reportDirectorate").value=record.meta.directorate;
+  if(record.meta.number)document.getElementById("reportNumber").value=record.meta.number;
+  if(record.meta.preparer)document.getElementById("reportPreparer").value=record.meta.preparer;
+ }
+ if(record.draft&&reportHasEntries(record.draft)){
+  restoreReportToForm(record.draft);
+  setArchiveStatus("تم استرجاع مسودة الشهر تلقائياً.");
+ }else if((record.batches||[]).length){
+  setArchiveStatus("تم العثور على دفعات محفوظة لهذا الشهر. أضف دفعة جديدة أو صدّر التقرير التراكمي.");
+ }
+ await refreshMonthlyStatus();
+}
+async function downloadMonthlyBackup(){
+ const month=selectedMonth(),record=await readMonthRecord(month);
+ const payload={app:"monthly_report_archive_v02",version:"0.2",month,record};
+ const blob=new Blob([JSON.stringify(payload,null,2)],{type:"application/json"});
+ const url=URL.createObjectURL(blob),a=document.createElement("a");a.href=url;a.download=`backup_month_${month}.json`;a.click();URL.revokeObjectURL(url);
+}
+async function restoreMonthlyBackup(event){
+ const file=event.target.files?.[0];if(!file)return;
+ try{
+  const payload=JSON.parse(await file.text());
+  if(payload.app!=="monthly_report_archive_v02"||!payload.record?.month)throw new Error("ملف النسخة الاحتياطية غير صالح أو غير متوافق.");
+  await writeMonthRecord(payload.record);
+  document.getElementById("archiveMonth").value=payload.record.month;
+  await loadMonthDraft();setArchiveStatus("تمت استعادة النسخة الاحتياطية بنجاح.");
+ }catch(e){alert("تعذرت استعادة النسخة الاحتياطية: "+e.message);}
+ event.target.value="";
+}
+async function changeArchiveMonth(){
+ const month=selectedMonth();
+ document.getElementById("reportDate").value=month+"-01";
+ await loadMonthDraft();
+}
+
 function fillDemoData(){
  const hasData=[...document.querySelectorAll(".item-card input,.item-card textarea,.item-card select")].some(e=>e.value.trim());
  if(hasData&&!confirm("سيتم استبدال بيانات الأقسام الحالية ببيانات تجريبية وهمية. هل تريد المتابعة؟"))return;
@@ -2013,6 +2207,14 @@ function initialize(){
     const today=new Date();
 
     document.getElementById("reportDate").value=getLocalDateString(today);
+    document.getElementById("archiveMonth").value=getLocalDateString(today).slice(0,7);
+    document.getElementById("archiveMonth").addEventListener("change",changeArchiveMonth);
+    document.getElementById("reportDate").addEventListener("change",()=>{
+      const m=document.getElementById("reportDate").value.slice(0,7);
+      if(m){document.getElementById("archiveMonth").value=m;loadMonthDraft().catch(e=>setArchiveStatus(e.message,true));}
+    });
+    document.addEventListener("input",e=>{if(e.target.closest("main"))scheduleDraftSave();});
+    document.addEventListener("change",e=>{if(e.target.closest("main"))scheduleDraftSave();});
 
     addRelief();
     addVisit();
@@ -2020,6 +2222,7 @@ function initialize(){
     addOngoing();
     addProblem();
     addSuggestion();
+    loadMonthDraft().catch(e=>setArchiveStatus("تعذر تحميل السجل المحلي: "+e.message,true));
 }
 
 document.addEventListener("DOMContentLoaded",initialize);
