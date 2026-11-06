@@ -291,11 +291,15 @@ footer{
 <div style="display:flex;gap:9px;flex-wrap:wrap;margin-top:12px">
  <button class="btn btn-primary" type="button" onclick="saveMonthlyBatch()">💾 حفظ الدفعة الحالية للشهر</button>
  <button class="btn btn-light" type="button" onclick="refreshMonthlyStatus()">↻ تحديث ملخص الشهر</button>
+ <button class="btn btn-light" type="button" id="togglePreviousInfoBtn" onclick="togglePreviousMonthlyInfo()">👁 عرض المعلومات السابقة</button>
  <button class="btn btn-gold" type="button" onclick="downloadMonthlyBackup()">⬇ نسخة احتياطية للشهر</button>
  <label class="btn btn-light" style="cursor:pointer">⬆ استعادة نسخة احتياطية<input type="file" accept="application/json,.json" onchange="restoreMonthlyBackup(event)" hidden></label>
 </div>
-<p class="hint" style="line-height:1.8;margin-top:10px">أضف المعلومات على دفعات خلال الشهر، ثم اضغط «حفظ الدفعة الحالية». ستُضاف إلى السجل دون حذف الدفعات السابقة، ويمكنك إفراغ النموذج لإدخال أحداث جديدة. عند التصدير تُجمع الدفعات المحفوظة مع أي معلومات موجودة حالياً في النموذج.</p>
+<p class="hint" style="line-height:1.8;margin-top:10px">أضف المعلومات على دفعات خلال الشهر، ثم اضغط «حفظ الدفعة الحالية». يمكنك عرض كل المعلومات السابقة معاً من زر «عرض المعلومات السابقة». وعند ترك خانات الإدخال فارغة، يتم التصدير اعتماداً على الدفعات المحفوظة وحدها.</p>
 <div id="monthlySummary" class="hint" style="margin-top:8px"></div>
+<div id="previousMonthlyInfo" hidden style="margin-top:14px;border:1px solid #d6dee8;border-radius:10px;padding:12px;max-height:620px;overflow:auto;background:#fff">
+ <div id="previousMonthlyInfoContent"></div>
+</div>
 </section>
 
 <section class="panel">
@@ -1226,6 +1230,14 @@ async function validateReport(cumulativeReport){
     if(!reportHasEntries(cleanReportEntries(report))){
         alert("لا توجد سجلات محفوظة أو مدخلة لهذا الشهر. أضف معلومات أو احفظ دفعة أولاً.");
         return false;
+    }
+
+    // إذا كانت خانات النموذج الحالية فارغة وهناك دفعات سابقة، صدّر الأرشيف
+    // كما هو دون مطالبة المستخدم بإعادة تعبئة أي خانة أو بيانات وصفية.
+    const currentEntries=cleanReportEntries(getReportData());
+    const savedRecord=await readMonthRecord(selectedMonth());
+    if(!reportHasEntries(currentEntries)&&(savedRecord.batches||[]).length){
+        return true;
     }
 
     if(!String(report.directorate||"").trim()){
@@ -2162,6 +2174,35 @@ async function loadMonthDraft(){
  }
  await refreshMonthlyStatus();
 }
+function archiveSection(title,rows,fields){
+ if(!rows?.length)return "";
+ const head=fields.map(f=>`<th>${esc(f.label)}</th>`).join("");
+ const body=rows.map((row,index)=>`<tr><td>${index+1}</td>${fields.map(f=>`<td>${display(f.value(row))}</td>`).join("")}</tr>`).join("");
+ return `<section style="margin:12px 0"><h3 style="margin:8px 0;color:#23466b">${esc(title)} (${rows.length})</h3><div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px"><thead><tr><th style="padding:7px;border:1px solid #d8e0e8">#</th>${head}</tr></thead><tbody>${body}</tbody></table></div></section>`;
+}
+async function togglePreviousMonthlyInfo(){
+ const panel=document.getElementById("previousMonthlyInfo"),button=document.getElementById("togglePreviousInfoBtn");
+ if(!panel||!button)return;
+ if(!panel.hidden){panel.hidden=true;button.textContent="👁 عرض المعلومات السابقة";return;}
+ button.disabled=true;button.textContent="جارٍ تحميل المعلومات…";
+ try{
+  const report=await getCumulativeReport();
+  const peopleText=people=>(people||[]).map(p=>[p.name,p.id].filter(Boolean).join(" — ")).filter(Boolean).join("\n");
+  const sections=[
+   archiveSection("المشاريع والتوزيعات الإغاثية",report.relief,[
+    {label:"اسم المشروع/التوزيعة",value:x=>x.projectName},{label:"نوع المادة",value:x=>x.materialType},{label:"الجهة الداعمة",value:x=>x.donor},{label:"الكمية",value:x=>x.totalCount},{label:"عدد المستفيدين",value:x=>x.beneficiaryCount},{label:"الفئة المستهدفة",value:x=>x.targetGroup},{label:"الغياب",value:x=>x.absentCount},{label:"المديرية",value:x=>x.directorate||report.directorate},{label:"التاريخ",value:x=>x.date},{label:"الأسماء والأرقام",value:x=>peopleText(x.people)}]),
+   archiveSection("الزيارات الرسمية",report.visits,[{label:"الجهة",value:x=>x.entity},{label:"التاريخ",value:x=>x.date},{label:"النتائج",value:x=>x.outcomes},{label:"المشاركون",value:x=>x.participants}]),
+   archiveSection("الفعاليات والمشاريع المنفذة",report.implemented,[{label:"اسم المشروع",value:x=>x.projectName},{label:"المكان",value:x=>x.place},{label:"الجهة الداعمة",value:x=>x.donor},{label:"الحضور",value:x=>x.attendance},{label:"الغياب",value:x=>x.absence},{label:"التاريخ",value:x=>x.date},{label:"الأسماء والأرقام",value:x=>peopleText(x.people)}]),
+   archiveSection("المشاريع قيد التنفيذ",report.ongoing,[{label:"اسم المشروع",value:x=>x.projectName},{label:"نوع المادة",value:x=>x.materialType},{label:"الجهة الداعمة",value:x=>x.donor},{label:"عدد المستفيدين",value:x=>x.beneficiaryCount},{label:"الفئة المستهدفة",value:x=>x.targetGroup},{label:"تاريخ التنفيذ",value:x=>x.executionDate}]),
+   archiveSection("المشكلات والحلول",report.problems,[{label:"المشكلة",value:x=>x.problem},{label:"الحل",value:x=>x.solution}]),
+   archiveSection("المقترحات",report.suggestions,[{label:"المقترح",value:x=>x.suggestion}])
+  ].filter(Boolean);
+  document.getElementById("previousMonthlyInfoContent").innerHTML=`<h3 style="margin:0 0 8px">السجل التراكمي لشهر ${esc(selectedMonth())}</h3>${sections.length?sections.join(""):'<p>لا توجد معلومات محفوظة لهذا الشهر.</p>'}`;
+  panel.hidden=false;button.textContent="إخفاء المعلومات السابقة";
+ }catch(e){setArchiveStatus("تعذر عرض المعلومات السابقة: "+e.message,true);}
+ finally{button.disabled=false;if(panel.hidden)button.textContent="👁 عرض المعلومات السابقة";}
+}
+
 async function downloadMonthlyBackup(){
  const month=selectedMonth(),record=await readMonthRecord(month);
  const payload={app:"monthly_report_archive_v02",version:"0.2",month,record};
