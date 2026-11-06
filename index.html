@@ -292,6 +292,7 @@ footer{
  <button class="btn btn-primary" type="button" onclick="saveMonthlyBatch()">💾 حفظ الدفعة الحالية للشهر</button>
  <button class="btn btn-light" type="button" onclick="refreshMonthlyStatus()">↻ تحديث ملخص الشهر</button>
  <button class="btn btn-light" type="button" id="togglePreviousInfoBtn" onclick="restorePreviousMonthlyInfo()">↩ استعادة المعلومات السابقة إلى الخانات</button>
+ <button class="btn btn-danger" type="button" id="hideRestoredInfoBtn" onclick="hideRestoredMonthlyInfo()" hidden>✕ إخفاء المعلومات السابقة المستعادة من الخانات</button>
  <button class="btn btn-danger" type="button" onclick="resetSelectedMonth()">🗑 تصفير معلومات الشهر بالكامل</button>
  <button class="btn btn-gold" type="button" onclick="downloadMonthlyBackup()">⬇ نسخة احتياطية للشهر</button>
  <label class="btn btn-light" style="cursor:pointer">⬆ استعادة نسخة احتياطية<input type="file" accept="application/json,.json" onchange="restoreMonthlyBackup(event)" hidden></label>
@@ -2200,10 +2201,38 @@ async function restorePreviousMonthlyInfo(){
   await refreshMonthlyStatus();
   setArchiveStatus("تمت إعادة تعبئة جميع المعلومات السابقة في خانات الإدخال. يمكنك مراجعتها وتعديلها ثم التصدير مباشرة.");
   document.getElementById("previousMonthlyInfo")?.setAttribute("hidden","");
+  const hideButton=document.getElementById("hideRestoredInfoBtn");
+  if(hideButton)hideButton.hidden=false;
   const first=document.querySelector("#reliefContainer input, #visitsContainer input, #implementedContainer input, #ongoingContainer input");
   first?.scrollIntoView({behavior:"smooth",block:"center"});
  }catch(e){setArchiveStatus("تعذرت استعادة المعلومات السابقة: "+e.message,true);}
  finally{button.disabled=false;button.textContent="↩ استعادة المعلومات السابقة إلى الخانات";}
+}
+
+async function hideRestoredMonthlyInfo(){
+ const button=document.getElementById("hideRestoredInfoBtn");
+ if(!button)return;
+ if(!confirm("سيتم إفراغ خانات المعلومات المستعادة فقط، مع الاحتفاظ بجميع الدفعات المحفوظة في الأرشيف. هل تريد المتابعة؟"))return;
+ button.disabled=true;
+ try{
+  clearTimeout(draftSaveTimer);draftSaveTimer=null;
+  clearEntryCards();
+  addRelief();addVisit();addImplemented();addOngoing();addProblem();addSuggestion();
+  ["reportDirectorate","reportNumber","reportPreparer"].forEach(id=>{
+   const field=document.getElementById(id);if(field)field.value="";
+  });
+  const month=selectedMonth(),record=await readMonthRecord(month);
+  record.formContainsArchive=false;
+  record.draft=null;
+  await writeMonthRecord(record);
+  await refreshMonthlyStatus();
+  setArchiveStatus("تم إفراغ خانات المعلومات المستعادة. جميع الدفعات السابقة ما زالت محفوظة في الأرشيف ويمكن استعادتها مجدداً.");
+  button.hidden=true;
+ }catch(e){
+  setArchiveStatus("تعذر إخفاء المعلومات المستعادة: "+e.message,true);
+ }finally{
+  button.disabled=false;
+ }
 }
 
 async function resetSelectedMonth(){
