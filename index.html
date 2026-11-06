@@ -1242,10 +1242,13 @@ async function validateReport(cumulativeReport){
     // نفحص فقط السجلات الموجودة حالياً في حقول الإدخال؛ أما الدفعات السابقة
     // فقد تم حفظها كسجلات مكتملة ولا يلزم إعادة إدخالها في النموذج.
     const reportCurrent=getReportData();
+    // محرر الأسماء ينشئ عدة صفوف فارغة افتراضياً؛ وجودها لا يعني أن المستخدم
+    // أدخل سجلاً جديداً، لذلك لا نعتمد على طول people بل على وجود اسم/رقم فعلي.
+    const hasPeopleData=people=>(people||[]).some(person=>String(person.name||"").trim()||String(person.id||"").trim());
 
     for(let i=0;i<reportCurrent.relief.length;i++){
         const item=reportCurrent.relief[i];
-        if(!item.projectName&&!item.materialType&&!item.donor&&!item.totalCount&&!item.beneficiaryCount&&!item.targetGroup&&!item.absentCount&&!item.date&&!item.amount&&!item.people.length)continue;
+        if(!item.projectName&&!item.materialType&&!item.donor&&!item.totalCount&&!item.beneficiaryCount&&!item.targetGroup&&!item.absentCount&&!item.date&&!item.amount&&!hasPeopleData(item.people))continue;
 
         if(!item.projectName){
             alert(`يرجى إدخال اسم المشروع أو التوزيعة في السجل رقم ${i+1}.`);
@@ -1271,7 +1274,7 @@ async function validateReport(cumulativeReport){
 
     for(let i=0;i<reportCurrent.implemented.length;i++){
         const item=reportCurrent.implemented[i];
-        if(!item.projectName&&!item.place&&!item.donor&&!item.attendance&&!item.absence&&!item.date&&!item.people.length)continue;
+        if(!item.projectName&&!item.place&&!item.donor&&!item.attendance&&!item.absence&&!item.date&&!hasPeopleData(item.people))continue;
 
         if(!item.projectName||!item.place||!item.date){
             alert(`يرجى إدخال اسم المشروع والمكان وتاريخ التنفيذ في المشروع المنفذ رقم ${i+1}.`);
