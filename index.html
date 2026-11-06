@@ -292,6 +292,7 @@ footer{
  <button class="btn btn-primary" type="button" onclick="saveMonthlyBatch()">💾 حفظ الدفعة الحالية للشهر</button>
  <button class="btn btn-light" type="button" onclick="refreshMonthlyStatus()">↻ تحديث ملخص الشهر</button>
  <button class="btn btn-light" type="button" id="togglePreviousInfoBtn" onclick="restorePreviousMonthlyInfo()">↩ استعادة المعلومات السابقة إلى الخانات</button>
+ <button class="btn btn-danger" type="button" onclick="resetSelectedMonth()">🗑 تصفير معلومات الشهر بالكامل</button>
  <button class="btn btn-gold" type="button" onclick="downloadMonthlyBackup()">⬇ نسخة احتياطية للشهر</button>
  <label class="btn btn-light" style="cursor:pointer">⬆ استعادة نسخة احتياطية<input type="file" accept="application/json,.json" onchange="restoreMonthlyBackup(event)" hidden></label>
 </div>
@@ -2203,6 +2204,27 @@ async function restorePreviousMonthlyInfo(){
   first?.scrollIntoView({behavior:"smooth",block:"center"});
  }catch(e){setArchiveStatus("تعذرت استعادة المعلومات السابقة: "+e.message,true);}
  finally{button.disabled=false;button.textContent="↩ استعادة المعلومات السابقة إلى الخانات";}
+}
+
+async function resetSelectedMonth(){
+ const month=selectedMonth();
+ const confirmed=confirm(`تنبيه: سيتم حذف جميع الدفعات المحفوظة ومسودة الإدخال وبيانات الشهر ${month} نهائياً من هذا الجهاز والمتصفح. لا يمكن التراجع عن هذه العملية. يُفضّل تنزيل نسخة احتياطية أولاً. هل أنت متأكد من تصفير الشهر بالكامل؟`);
+ if(!confirmed)return;
+ try{
+  clearTimeout(draftSaveTimer);draftSaveTimer=null;
+  const db=await openMonthDB();
+  await new Promise((resolve,reject)=>{
+   const tx=db.transaction(MONTH_DB_STORE,"readwrite");
+   tx.objectStore(MONTH_DB_STORE).delete(month);
+   tx.oncomplete=resolve;tx.onerror=()=>reject(tx.error);tx.onabort=()=>reject(tx.error||new Error("تم إلغاء عملية الحذف"));
+  });
+  clearEntryCards();
+  addRelief();addVisit();addImplemented();addOngoing();addProblem();addSuggestion();
+  ["reportDirectorate","reportNumber","reportPreparer"].forEach(id=>{const el=document.getElementById(id);if(el)el.value="";});
+  const date=document.getElementById("reportDate");if(date)date.value=month+"-01";
+  await refreshMonthlyStatus();
+  setArchiveStatus(`تم تصفير جميع معلومات شهر ${month} بنجاح. يمكنك البدء بإدخال بيانات جديدة.`);
+ }catch(e){setArchiveStatus("تعذر تصفير الشهر: "+e.message,true);alert("تعذر تصفير الشهر: "+e.message);}
 }
 
 async function downloadMonthlyBackup(){
