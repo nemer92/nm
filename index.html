@@ -1219,25 +1219,32 @@ function validatePeople(card,type,label,index){
    التحقق قبل التصدير
 ========================= */
 
-function validateReport(){
-    const required=[
-        ["reportDirectorate","يرجى اختيار المديرية."],
-        ["reportDate","يرجى إدخال تاريخ إعداد التقرير."]
-    ];
-
-    for(const [id,message] of required){
-        const el=document.getElementById(id);
-        if(!el.value.trim()){
-            alert(message);
-            el.focus();
-            return false;
-        }
+async function validateReport(cumulativeReport){
+    // التحقق من التقرير النهائي بعد جمع الدفعات المحفوظة مع النموذج الحالي.
+    // لا نشترط وجود إدخال جديد في النموذج إذا كان الشهر يحتوي سجلات محفوظة.
+    const report=cumulativeReport||await getCumulativeReport();
+    if(!reportHasEntries(cleanReportEntries(report))){
+        alert("لا توجد سجلات محفوظة أو مدخلة لهذا الشهر. أضف معلومات أو احفظ دفعة أولاً.");
+        return false;
     }
 
-    const report=getReportData();
+    if(!String(report.directorate||"").trim()){
+        alert("يرجى اختيار المديرية أو التأكد من وجودها في بيانات الشهر المحفوظة.");
+        const el=document.getElementById("reportDirectorate");if(el)el.focus();
+        return false;
+    }
+    if(!String(report.date||"").trim()){
+        alert("يرجى إدخال تاريخ إعداد التقرير.");
+        const el=document.getElementById("reportDate");if(el)el.focus();
+        return false;
+    }
 
-    for(let i=0;i<report.relief.length;i++){
-        const item=report.relief[i];
+    // نفحص فقط السجلات الموجودة حالياً في حقول الإدخال؛ أما الدفعات السابقة
+    // فقد تم حفظها كسجلات مكتملة ولا يلزم إعادة إدخالها في النموذج.
+    const reportCurrent=getReportData();
+
+    for(let i=0;i<reportCurrent.relief.length;i++){
+        const item=reportCurrent.relief[i];
         if(!item.projectName&&!item.materialType&&!item.donor&&!item.totalCount&&!item.beneficiaryCount&&!item.targetGroup&&!item.absentCount&&!item.date&&!item.amount&&!item.people.length)continue;
 
         if(!item.projectName){
@@ -1252,8 +1259,8 @@ function validateReport(){
         }
     }
 
-    for(let i=0;i<report.visits.length;i++){
-        const item=report.visits[i];
+    for(let i=0;i<reportCurrent.visits.length;i++){
+        const item=reportCurrent.visits[i];
         if(!item.entity&&!item.date&&!item.outcomes&&!item.participants)continue;
 
         if(!item.entity||!item.date){
@@ -1262,8 +1269,8 @@ function validateReport(){
         }
     }
 
-    for(let i=0;i<report.implemented.length;i++){
-        const item=report.implemented[i];
+    for(let i=0;i<reportCurrent.implemented.length;i++){
+        const item=reportCurrent.implemented[i];
         if(!item.projectName&&!item.place&&!item.donor&&!item.attendance&&!item.absence&&!item.date&&!item.people.length)continue;
 
         if(!item.projectName||!item.place||!item.date){
@@ -1278,8 +1285,8 @@ function validateReport(){
         }
     }
 
-    for(let i=0;i<report.ongoing.length;i++){
-        const ongoingItem=report.ongoing[i];
+    for(let i=0;i<reportCurrent.ongoing.length;i++){
+        const ongoingItem=reportCurrent.ongoing[i];
         if(!ongoingItem.projectName&&!ongoingItem.materialType&&!ongoingItem.donor&&!ongoingItem.beneficiaryCount&&!ongoingItem.targetGroup&&!ongoingItem.executionDate)continue;
         if(!ongoingItem.projectName){
             alert(`يرجى إدخال اسم المشروع قيد التنفيذ في السجل رقم ${i+1}.`);
@@ -1757,12 +1764,12 @@ function formatWordReportTables(doc){
 }
 
 async function exportWord(){
+ const report=normalizeReportDigits(await getCumulativeReport());
+ if(!await validateReport(report))return;
  let uploadedTemplate;
  try{uploadedTemplate=await getNMTemplateFile();}
  catch(e){alert(e.message);return;}
- if(!validateReport())return;
  if(typeof JSZip==="undefined"){alert("تعذر تحميل مكتبة إنشاء DOCX. تحقق من اتصال الإنترنت.");return;}
- const report=normalizeReportDigits(await getCumulativeReport());
  try{
   const zip=await JSZip.loadAsync(uploadedTemplate);const file=zip.file("word/document.xml");if(!file)throw new Error("ملف Word الداخلي غير موجود");
   const xml=await file.async("text");const doc=new DOMParser().parseFromString(xml,"application/xml");if(doc.getElementsByTagName("parsererror").length)throw new Error("تعذر قراءة بنية قالب Word");
@@ -1801,14 +1808,14 @@ async function exportWord(){
 ========================= */
 
 async function exportExcel(){
-    if(!validateReport())return;
+    const report=normalizeReportDigits(await getCumulativeReport());
+    if(!await validateReport(report))return;
 
     if(typeof XLSX==="undefined"){
         alert("تعذر تحميل مكتبة Excel. تحقق من اتصال الإنترنت.");
         return;
     }
 
-    const report=normalizeReportDigits(await getCumulativeReport());
 
     /*
       الورقة الأولى:
