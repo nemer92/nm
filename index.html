@@ -343,7 +343,7 @@ footer{
     </div>
     <div class="field">
         <label>رقم التقرير</label>
-        <input type="text" id="reportNumber" placeholder="مثال: 004">
+        <input type="text" id="reportNumber" value="004" placeholder="مثال: 004">
     </div>
     <div class="field">
         <label>تاريخ إعداد التقرير *</label>
@@ -351,7 +351,7 @@ footer{
     </div>
     <div class="field">
         <label>اسم مُعدّ التقرير</label>
-        <input type="text" id="reportPreparer" placeholder="اسم مُعدّ التقرير">
+        <input type="text" id="reportPreparer" value="أحمد وليد النمر" placeholder="اسم مُعدّ التقرير">
     </div>
 </div>
 </section>
@@ -1867,6 +1867,8 @@ function formatWordReportTables(doc){
 
 async function exportWord(){
  const report=normalizeReportDigits(await getCumulativeReport());
+ // عند التصدير لا نضع قيماً تجريبية أو اسماً افتراضياً تلقائياً.
+ // يتم تصدير الاسم والرقم كما هما في التقرير، وإذا كانا فارغين يبقيان فارغين.
  if(!await validateReport(report))return;
  let uploadedTemplate;
  try{uploadedTemplate=await getNMTemplateFile();}
