@@ -1873,6 +1873,21 @@ function excelEnsureColumnStyle(ws,targetCol,sourceCol,maxRow){
     }
 }
 
+function excelMergeVerticalHeader(ws,col,topRow,bottomRow,label){
+    for(let r=topRow+1;r<=bottomRow;r++)excelClearCellValue(ws,r,col);
+    excelSetCell(ws,topRow,col,label,excelCellAddress(topRow,col));
+    if(!ws["!merges"])ws["!merges"]=[];
+    const target={s:{r:topRow,c:col},e:{r:bottomRow,c:col}};
+    ws["!merges"]=ws["!merges"].filter(m=>!(m.s.r<=target.e.r&&m.e.r>=target.s.r&&m.s.c<=col&&m.e.c>=col));
+    ws["!merges"].push(target);
+    for(let r=topRow;r<=bottomRow;r++){
+        const cell=ws[excelCellAddress(r,col)]||(ws[excelCellAddress(r,col)]={t:"z"});
+        cell.s={...(cell.s||{}),alignment:{horizontal:"center",vertical:"center",wrapText:true},
+            fill:{patternType:"solid",fgColor:{rgb:"23466B"}},
+            font:{name:"Arial",sz:11,bold:true,color:{rgb:"FFFFFF"}},
+            border:{top:{style:"thin",color:{rgb:"D7E0EA"}},bottom:{style:"thin",color:{rgb:"D7E0EA"}},left:{style:"thin",color:{rgb:"D7E0EA"}},right:{style:"thin",color:{rgb:"D7E0EA"}}}};
+    }
+}
 function excelApplyProfessionalTable(ws,headerRow,firstDataRow,lastDataRow,lastCol,widths,extraHeaderRows=[]){
     const thin={style:"thin",color:{rgb:"D7E0EA"}};
     const border={top:thin,bottom:thin,left:thin,right:thin};
@@ -1968,11 +1983,11 @@ async function exportExcel(){
         const reliefTotalCol=3+reliefGroupCount,reliefNotesCol=reliefTotalCol+1;
         const monthLabel=report.date?String(report.date).slice(0,7):selectedMonth();
         excelSetCell(reliefSheet,0,0,"توزيعات شهر ("+monthLabel+")");
-        // إزالة العناوين المكررة أعلى الجدول؛ تبقى حقول الهوية في صف العناوين الرئيسي فقط.
-        [0,1,2].forEach(c=>excelClearCellValue(reliefSheet,1,c));
-        ["الرقم","الرقم الذاتي","الاسم الثلاثي"].forEach((v,i)=>excelSetCell(reliefSheet,3,i,v));
+        // دمج أعمدة بيانات الشخص والمجموع والملاحظات رأسياً بمحاذاة رؤوس بيانات التوزيعات.
         for(let i=0;i<reliefGroupCount;i++){const col=3+i,item=reliefItems[i];if(item){excelSetDateCell(reliefSheet,1,col,item.date,excelCellAddress(1,col));excelSetCell(reliefSheet,2,col,item.projectName||item.materialType||"");excelSetCell(reliefSheet,3,col,"القيمة");}else [1,2,3].forEach(r=>excelClearCellValue(reliefSheet,r,col));}
-        excelSetCell(reliefSheet,3,reliefTotalCol,"المجموع");excelSetCell(reliefSheet,3,reliefNotesCol,"الملاحظات");
+        ["الرقم","الرقم الذاتي","الاسم الثلاثي"].forEach((v,i)=>excelMergeVerticalHeader(reliefSheet,i,1,3,v));
+        excelMergeVerticalHeader(reliefSheet,reliefTotalCol,1,3,"المجموع");
+        excelMergeVerticalHeader(reliefSheet,reliefNotesCol,1,3,"الملاحظات");
         const reliefRows=new Map();
         reliefPeople.forEach(([key,person],i)=>{const row=4+i;reliefRows.set(key,row);excelSetCell(reliefSheet,row,0,i+1,excelCellAddress(4,0));excelSetCell(reliefSheet,row,1,person.id,excelCellAddress(4,1));excelSetCell(reliefSheet,row,2,person.name,excelCellAddress(4,2));});
         reliefItems.forEach((item,i)=>(item.people||[]).forEach(person=>{const key=excelPersonKey(person);if(reliefRows.has(key))excelSetCell(reliefSheet,reliefRows.get(key),3+i,excelAmountValue(item.amount),excelCellAddress(4,Math.min(3+i,4)));}));
@@ -1985,12 +2000,11 @@ async function exportExcel(){
         excelShiftColumns(eventsSheet,5,eventExtraColumns);
         for(let c=5;c<5+eventExtraColumns;c++)excelEnsureColumnStyle(eventsSheet,c,(c%2===1?3:4),Math.max(XLSX.utils.decode_range(eventsSheet["!ref"]).e.r+1,20));
         const eventTotalCol=3+eventGroupCount,eventNotesCol=eventTotalCol+1;
-        // إزالة العناوين المكررة أعلى الجدول؛ تبقى في صف العناوين الرئيسي فقط.
-        [0,1,2].forEach(c=>excelClearCellValue(eventsSheet,2,c));
-        ["الرقم","الرقم الذاتي","الاسم الثلاثي"].forEach((v,i)=>excelSetCell(eventsSheet,5,i,v));
-        excelSetCell(eventsSheet,5,eventTotalCol,"المجموع");
+        // دمج أعمدة بيانات الشخص والمجموع والملاحظات رأسياً بمحاذاة بيانات كل فعالية.
         for(let i=0;i<eventGroupCount;i++){const col=3+i,item=eventItems[i];if(item){excelSetDateCell(eventsSheet,2,col,item.date,excelCellAddress(2,col));excelSetCell(eventsSheet,3,col,item.projectName||"");excelSetCell(eventsSheet,4,col,item.place||"");excelSetCell(eventsSheet,5,col,"MF"+String(i+1).padStart(3,"0"));}else [2,3,4,5].forEach(r=>excelClearCellValue(eventsSheet,r,col));}
-        excelSetCell(eventsSheet,5,eventNotesCol,"ملاحظات");
+        ["الرقم","الرقم الذاتي","الاسم الثلاثي"].forEach((v,i)=>excelMergeVerticalHeader(eventsSheet,i,2,5,v));
+        excelMergeVerticalHeader(eventsSheet,eventTotalCol,2,5,"المجموع");
+        excelMergeVerticalHeader(eventsSheet,eventNotesCol,2,5,"الملاحظات");
         const eventRows=new Map();
         eventPeople.forEach(([key,person],i)=>{const row=6+i;eventRows.set(key,row);excelSetCell(eventsSheet,row,0,i+1,excelCellAddress(6,0));excelSetCell(eventsSheet,row,1,person.id,excelCellAddress(6,1));excelSetCell(eventsSheet,row,2,person.name,excelCellAddress(6,2));});
         eventItems.forEach((item,i)=>(item.people||[]).forEach(person=>{const key=excelPersonKey(person);if(eventRows.has(key))excelSetCell(eventsSheet,eventRows.get(key),3+i,"✓",excelCellAddress(6,Math.min(3+i,4)));}));
@@ -2007,8 +2021,15 @@ async function exportExcel(){
         excelApplyProfessionalTable(eventsSheet,5,6,5+eventPeople.length,eventNotesCol,
             [8,16,28,...Array(eventGroupCount).fill(12),12,28],[0,2,3,4]);
 
-        // الزيارات الرسمية: كل زيارة في صف مستقل.
-        (report.visits||[]).forEach((visit,i)=>{const row=3+i;excelSetCell(visitsSheet,row,0,visit.entity||"",excelCellAddress(3,0));excelSetCell(visitsSheet,row,1,visit.date||"",excelCellAddress(3,1));excelSetCell(visitsSheet,row,2,visit.outcomes||"",excelCellAddress(3,2));excelSetCell(visitsSheet,row,3,visit.participants||"",excelCellAddress(3,3));});
+        // الزيارات الرسمية: كل زيارة في صف مستقل ضمن جدول منسق.
+        const visitItems=report.visits||[];
+        visitItems.forEach((visit,i)=>{const row=3+i;excelSetCell(visitsSheet,row,0,visit.entity||"",excelCellAddress(3,0));excelSetDateCell(visitsSheet,row,1,visit.date,excelCellAddress(3,1));excelSetCell(visitsSheet,row,2,visit.outcomes||"",excelCellAddress(3,2));excelSetCell(visitsSheet,row,3,visit.participants||"",excelCellAddress(3,3));});
+        excelApplyProfessionalTable(visitsSheet,2,3,Math.max(2,2+visitItems.length),3,[24,16,38,30],[0]);
+        if(!visitsSheet["!merges"])visitsSheet["!merges"]=[];
+        visitsSheet["!merges"]=visitsSheet["!merges"].filter(m=>!(m.s.r===0&&m.s.c===0));
+        visitsSheet["!merges"].push({s:{r:0,c:0},e:{r:0,c:3}});
+        if(visitsSheet["A1"]){visitsSheet["A1"].s={...(visitsSheet["A1"].s||{}),font:{name:"Arial",sz:14,bold:true,color:{rgb:"FFFFFF"}},fill:{patternType:"solid",fgColor:{rgb:"17365D"}},alignment:{horizontal:"center",vertical:"center"},border:{bottom:{style:"medium",color:{rgb:"D5A642"}}}};}
+        visitsSheet["!rows"][0]={...(visitsSheet["!rows"][0]||{}),hpt:32};
 
         // لا نعيد ضبط نطاقات الأوراق أو اتجاهها؛ نترك إعدادات القالب الأصلية كما هي.
         // نوسّع النطاق فقط عند الحاجة لإضافة صفوف جديدة خارج النطاق الأصلي.
