@@ -1882,10 +1882,26 @@ function excelCollectPeople(items){
     return Array.from(people.entries());
 }
 function excelDateValue(value){
-    const match=String(value??"").match(/^(\d{4})-(\d{2})-(\d{2})$/);
-    if(!match)return value||"";
-    const utc=Date.UTC(Number(match[1]),Number(match[2])-1,Number(match[3]));
-    return Math.floor((utc-Date.UTC(1899,11,30))/86400000);
+    if(value===null||value===undefined||value==="")return "";
+    // يدعم تاريخ حقول HTML (YYYY-MM-DD) والتواريخ المحفوظة بصيغ يوم/شهر/سنة،
+    // وكذلك القيم التي تحتوي وقتاً بعد التاريخ.
+    const raw=toEnglishDigits(String(value)).trim();
+    let match=raw.match(/^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})(?:[T\s].*)?$/);
+    if(!match){
+        const dmy=raw.match(/^(\d{1,2})[-/.](\d{1,2})[-/.](\d{4})$/);
+        if(dmy)match=[dmy[0],dmy[3],dmy[2],dmy[1]];
+    }
+    if(!match)return raw;
+    const year=Number(match[1]),month=Number(match[2]),day=Number(match[3]);
+    const date=new Date(Date.UTC(year,month-1,day));
+    if(date.getUTCFullYear()!==year||date.getUTCMonth()!==month-1||date.getUTCDate()!==day)return raw;
+    return Math.floor((Date.UTC(year,month-1,day)-Date.UTC(1899,11,30))/86400000);
+}
+function excelSetDateCell(ws,row,col,value,styleSource){
+    const serial=excelDateValue(value);
+    excelSetCell(ws,row,col,serial,styleSource);
+    const cell=ws[excelCellAddress(row,col)];
+    if(cell&&typeof serial==="number")cell.z="dd/mm/yyyy";
 }
 function excelAmountValue(value){
     const raw=toEnglishDigits(String(value??"")).trim();if(!raw)return null;const normalized=raw.replace(/,/g,"").replace(/[٬،]/g,"");
@@ -1909,7 +1925,7 @@ async function exportExcel(){
         const monthLabel=report.date?String(report.date).slice(0,7):selectedMonth();
         excelSetCell(reliefSheet,0,0,"توزيعات شهر ("+monthLabel+")");
         ["الرقم","الرقم الذاتي","الاسم الثلاثي"].forEach((v,i)=>excelSetCell(reliefSheet,3,i,v));
-        for(let i=0;i<reliefGroupCount;i++){const col=3+i,item=reliefItems[i];if(item){excelSetCell(reliefSheet,1,col,excelDateValue(item.date),excelCellAddress(1,col));excelSetCell(reliefSheet,2,col,item.projectName||item.materialType||"");excelSetCell(reliefSheet,3,col,"القيمة");}else [1,2,3].forEach(r=>excelClearCellValue(reliefSheet,r,col));}
+        for(let i=0;i<reliefGroupCount;i++){const col=3+i,item=reliefItems[i];if(item){excelSetDateCell(reliefSheet,1,col,item.date,excelCellAddress(1,col));excelSetCell(reliefSheet,2,col,item.projectName||item.materialType||"");excelSetCell(reliefSheet,3,col,"القيمة");}else [1,2,3].forEach(r=>excelClearCellValue(reliefSheet,r,col));}
         excelSetCell(reliefSheet,3,reliefTotalCol,"المجموع");excelSetCell(reliefSheet,3,reliefNotesCol,"الملاحظات");
         const reliefRows=new Map();
         reliefPeople.forEach(([key,person],i)=>{const row=4+i;reliefRows.set(key,row);excelSetCell(reliefSheet,row,0,i+1,excelCellAddress(4,0));excelSetCell(reliefSheet,row,1,person.id,excelCellAddress(4,1));excelSetCell(reliefSheet,row,2,person.name,excelCellAddress(4,2));});
@@ -1921,7 +1937,7 @@ async function exportExcel(){
         if(eventGroupCount>2){const extra=eventGroupCount-2;excelShiftColumns(eventsSheet,5,extra);for(let c=5;c<5+extra;c++)excelEnsureColumnStyle(eventsSheet,c,(c%2===1?3:4),Math.max(XLSX.utils.decode_range(eventsSheet["!ref"]).e.r+1,20));}
         const eventNotesCol=3+eventGroupCount;
         ["الرقم","الرقم الذاتي","الاسم الثلاثي"].forEach((v,i)=>excelSetCell(eventsSheet,5,i,v));
-        for(let i=0;i<eventGroupCount;i++){const col=3+i,item=eventItems[i];if(item){excelSetCell(eventsSheet,2,col,excelDateValue(item.date),excelCellAddress(2,col));excelSetCell(eventsSheet,3,col,item.projectName||"");excelSetCell(eventsSheet,4,col,item.place||"");excelSetCell(eventsSheet,5,col,"MF"+String(i+1).padStart(3,"0"));}else [2,3,4,5].forEach(r=>excelClearCellValue(eventsSheet,r,col));}
+        for(let i=0;i<eventGroupCount;i++){const col=3+i,item=eventItems[i];if(item){excelSetDateCell(eventsSheet,2,col,item.date,excelCellAddress(2,col));excelSetCell(eventsSheet,3,col,item.projectName||"");excelSetCell(eventsSheet,4,col,item.place||"");excelSetCell(eventsSheet,5,col,"MF"+String(i+1).padStart(3,"0"));}else [2,3,4,5].forEach(r=>excelClearCellValue(eventsSheet,r,col));}
         excelSetCell(eventsSheet,5,eventNotesCol,"ملاحظات");
         const eventRows=new Map();
         eventPeople.forEach(([key,person],i)=>{const row=6+i;eventRows.set(key,row);excelSetCell(eventsSheet,row,0,i+1,excelCellAddress(6,0));excelSetCell(eventsSheet,row,1,person.id,excelCellAddress(6,1));excelSetCell(eventsSheet,row,2,person.name,excelCellAddress(6,2));});
