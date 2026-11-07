@@ -1873,7 +1873,7 @@ function excelEnsureColumnStyle(ws,targetCol,sourceCol,maxRow){
     }
 }
 
-function excelApplyProfessionalTable(ws,headerRow,firstDataRow,lastDataRow,lastCol,widths){
+function excelApplyProfessionalTable(ws,headerRow,firstDataRow,lastDataRow,lastCol,widths,extraHeaderRows=[]){
     const thin={style:"thin",color:{rgb:"D7E0EA"}};
     const border={top:thin,bottom:thin,left:thin,right:thin};
     const headerStyle={
@@ -1887,9 +1887,16 @@ function excelApplyProfessionalTable(ws,headerRow,firstDataRow,lastDataRow,lastC
         alignment:{horizontal:"center",vertical:"center",wrapText:true},
         border
     };
+    const allHeaderRows=[...new Set([headerRow,...extraHeaderRows])];
     for(let c=0;c<=lastCol;c++){
-        const h=ws[excelCellAddress(headerRow,c)];
-        if(h){h.s=JSON.parse(JSON.stringify(headerStyle));}
+        for(const hr of allHeaderRows){
+            const h=ws[excelCellAddress(hr,c)];
+            if(h){
+                h.s=JSON.parse(JSON.stringify(headerStyle));
+                h.s.fill={patternType:"solid",fgColor:{rgb:hr===headerRow?"23466B":"39739B"}};
+                h.s.font={name:"Arial",sz:hr===headerRow?11:10,bold:true,color:{rgb:"FFFFFF"}};
+            }
+        }
         for(let r=firstDataRow;r<=lastDataRow;r++){
             const a=excelCellAddress(r,c),cell=ws[a];
             if(!cell)ws[a]={t:"z",s:JSON.parse(JSON.stringify(bodyStyle))};
@@ -1901,7 +1908,7 @@ function excelApplyProfessionalTable(ws,headerRow,firstDataRow,lastDataRow,lastC
         if(ws["!cols"])ws["!cols"][c]={...(ws["!cols"][c]||{}),wch:widths[c]||16};
     }
     if(!ws["!rows"])ws["!rows"]=[];
-    ws["!rows"][headerRow]={...(ws["!rows"][headerRow]||{}),hpt:30};
+    for(const hr of allHeaderRows)ws["!rows"][hr]={...(ws["!rows"][hr]||{}),hpt:hr===headerRow?30:24};
     for(let r=firstDataRow;r<=lastDataRow;r++)ws["!rows"][r]={...(ws["!rows"][r]||{}),hpt:23};
     if(lastDataRow>=firstDataRow){
         ws["!autofilter"]={ref:XLSX.utils.encode_range({s:{r:headerRow,c:0},e:{r:lastDataRow,c:lastCol}})};
@@ -1956,7 +1963,7 @@ async function exportExcel(){
         if(!reliefSheet||!eventsSheet||!visitsSheet)throw new Error("يجب أن تحتوي المفرغة NM.xlsx على الأوراق: التوزيعات، الفعاليات، الزيارات الرسمية.");
 
         // التوزيعات: كل شخص في صف واحد، وكل توزيعة في عمود مستقل.
-        const reliefItems=report.relief||[],reliefPeople=excelCollectPeople(reliefItems),reliefGroupCount=Math.max(2,reliefItems.length);
+        const reliefItems=report.relief||[],reliefPeople=excelCollectPeople(reliefItems),reliefGroupCount=Math.max(1,reliefItems.length);
         if(reliefGroupCount>2){const extra=reliefGroupCount-2;excelShiftColumns(reliefSheet,5,extra);for(let c=5;c<5+extra;c++)excelEnsureColumnStyle(reliefSheet,c,(c%2===1?3:4),Math.max(XLSX.utils.decode_range(reliefSheet["!ref"]).e.r+1,20));}
         const reliefTotalCol=3+reliefGroupCount,reliefNotesCol=reliefTotalCol+1;
         const monthLabel=report.date?String(report.date).slice(0,7):selectedMonth();
@@ -1972,7 +1979,7 @@ async function exportExcel(){
         reliefPeople.forEach(([key],i)=>{const row=4+i,amounts=reliefItems.map((_,j)=>{const cell=reliefSheet[excelCellAddress(row,3+j)];return cell&&cell.v!==undefined?cell.v:"";});excelSetCell(reliefSheet,row,reliefTotalCol,excelNumericTotal(amounts),excelCellAddress(4,5));excelSetCell(reliefSheet,row,reliefNotesCol,"",excelCellAddress(4,6));});
 
         // الفعاليات: كل شخص في صف واحد، وكل فعالية عمود مستقل، والحضور بعلامة صح.
-        const eventItems=report.implemented||[],eventPeople=excelCollectPeople(eventItems),eventGroupCount=Math.max(2,eventItems.length);
+        const eventItems=report.implemented||[],eventPeople=excelCollectPeople(eventItems),eventGroupCount=Math.max(1,eventItems.length);
         // إفساح عمود للمجموع قبل الملاحظات، مع الحفاظ على أعمدة الفعاليات الإضافية.
         const eventExtraColumns=Math.max(0,eventGroupCount-2)+1;
         excelShiftColumns(eventsSheet,5,eventExtraColumns);
@@ -1996,9 +2003,9 @@ async function exportExcel(){
 
         // تنسيق احترافي موحد: الحقول الأساسية والمجموع والملاحظات أعمدة واضحة.
         excelApplyProfessionalTable(reliefSheet,3,4,3+reliefPeople.length,reliefNotesCol,
-            [8,16,28,...Array(reliefGroupCount).fill(14),14,28]);
+            [8,16,28,...Array(reliefGroupCount).fill(14),14,28],[0,1,2]);
         excelApplyProfessionalTable(eventsSheet,5,6,5+eventPeople.length,eventNotesCol,
-            [8,16,28,...Array(eventGroupCount).fill(12),12,28]);
+            [8,16,28,...Array(eventGroupCount).fill(12),12,28],[0,2,3,4]);
 
         // الزيارات الرسمية: كل زيارة في صف مستقل.
         (report.visits||[]).forEach((visit,i)=>{const row=3+i;excelSetCell(visitsSheet,row,0,visit.entity||"",excelCellAddress(3,0));excelSetCell(visitsSheet,row,1,visit.date||"",excelCellAddress(3,1));excelSetCell(visitsSheet,row,2,visit.outcomes||"",excelCellAddress(3,2));excelSetCell(visitsSheet,row,3,visit.participants||"",excelCellAddress(3,3));});
