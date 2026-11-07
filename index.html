@@ -292,6 +292,7 @@ footer{
  <button class="btn btn-primary" type="button" onclick="saveMonthlyBatch()">💾 حفظ الدفعة الحالية للشهر</button>
  <button class="btn btn-light" type="button" onclick="refreshMonthlyStatus()">↻ تحديث ملخص الشهر</button>
  <button class="btn btn-light" type="button" id="togglePreviousInfoBtn" onclick="restorePreviousMonthlyInfo()">↩ استعادة المعلومات السابقة إلى الخانات</button>
+ <button class="btn btn-primary" type="button" id="saveEditedCumulativeBtn" onclick="saveEditedCumulative()" hidden>💾 حفظ التعديلات على التراكمي</button>
  <button class="btn btn-danger" type="button" id="hideRestoredInfoBtn" onclick="hideRestoredMonthlyInfo()" hidden>✕ إخفاء المعلومات السابقة المستعادة من الخانات</button>
  <button class="btn btn-danger" type="button" onclick="resetSelectedMonth()">🗑 تصفير معلومات الشهر بالكامل</button>
  <button class="btn btn-gold" type="button" onclick="downloadMonthlyBackup()">⬇ نسخة احتياطية للشهر</button>
@@ -2231,6 +2232,39 @@ async function loadMonthDraft(){
  activeArchiveMonth=month;
  await refreshMonthlyStatus();
 }
+async function saveEditedCumulative(){
+ const button=document.getElementById("saveEditedCumulativeBtn");
+ if(!button)return;
+ button.disabled=true;button.textContent="جارٍ حفظ التعديلات…";
+ try{
+  const month=selectedMonth(),current=cleanReportEntries(getReportData());
+  if(!reportHasEntries(current)){
+   alert("لا توجد معلومات فعلية لحفظها. إذا أردت تصفير الشهر استخدم خيار تصفير الشهر.");
+   return;
+  }
+  const record=await readMonthRecord(month);
+  // بعد تعديل التراكمي، تصبح النسخة المعدلة هي النسخة المعتمدة للشهر
+  // بدلاً من إبقاء الدفعات القديمة وإظهارها مرة أخرى عند التجميع.
+  record.batches=[current];
+  record.formContainsArchive=true;
+  record.draft=current;
+  record.meta={
+   directorate:current.directorate||record.meta?.directorate||"",
+   number:current.number||record.meta?.number||"",
+   preparer:current.preparer||record.meta?.preparer||""
+  };
+  await writeMonthRecord(record);
+  await refreshMonthlyStatus();
+  setArchiveStatus("تم حفظ التعديلات على المعلومات التراكمية بنجاح. أصبحت هذه النسخة هي النسخة المعتمدة للشهر.");
+  button.hidden=false;
+ }catch(e){
+  setArchiveStatus("تعذر حفظ تعديلات المعلومات التراكمية: "+e.message,true);
+  alert("تعذر حفظ التعديلات: "+e.message);
+ }finally{
+  button.disabled=false;button.textContent="💾 حفظ التعديلات على التراكمي";
+ }
+}
+
 async function restorePreviousMonthlyInfo(){
  const button=document.getElementById("togglePreviousInfoBtn");
  if(!button)return;
@@ -2254,6 +2288,8 @@ async function restorePreviousMonthlyInfo(){
   document.getElementById("previousMonthlyInfo")?.setAttribute("hidden","");
   const hideButton=document.getElementById("hideRestoredInfoBtn");
   if(hideButton)hideButton.hidden=false;
+  const saveButton=document.getElementById("saveEditedCumulativeBtn");
+  if(saveButton)saveButton.hidden=false;
   const first=document.querySelector("#reliefContainer input, #visitsContainer input, #implementedContainer input, #ongoingContainer input");
   first?.scrollIntoView({behavior:"smooth",block:"center"});
  }catch(e){setArchiveStatus("تعذرت استعادة المعلومات السابقة: "+e.message,true);}
@@ -2279,6 +2315,8 @@ async function hideRestoredMonthlyInfo(){
   await refreshMonthlyStatus();
   setArchiveStatus("تم إفراغ خانات المعلومات المستعادة. جميع الدفعات السابقة ما زالت محفوظة في الأرشيف ويمكن استعادتها مجدداً.");
   button.hidden=true;
+  const saveButton=document.getElementById("saveEditedCumulativeBtn");
+  if(saveButton)saveButton.hidden=true;
  }catch(e){
   setArchiveStatus("تعذر إخفاء المعلومات المستعادة: "+e.message,true);
  }finally{
@@ -2304,6 +2342,7 @@ async function resetSelectedMonth(){
   const date=document.getElementById("reportDate");if(date)date.value=month+"-01";
   activeArchiveMonth=month;
   const hideButton=document.getElementById("hideRestoredInfoBtn");if(hideButton)hideButton.hidden=true;
+  const saveButton=document.getElementById("saveEditedCumulativeBtn");if(saveButton)saveButton.hidden=true;
   document.getElementById("previousMonthlyInfo")?.setAttribute("hidden","");
   await refreshMonthlyStatus();
   setArchiveStatus(`تم تصفير جميع معلومات شهر ${month} بنجاح. يمكنك البدء بإدخال بيانات جديدة.`);
