@@ -2096,12 +2096,26 @@ function reportHasEntries(r){
 }
 function cleanReportEntries(r){
  const x=JSON.parse(JSON.stringify(r||{}));
- const has=v=>String(v??"").trim()!=="";
+
+ // السجل لا يُحتسب لمجرد وجود كائن/صف فارغ في الواجهة.
+ // التاريخ وحده، والقيمة 0 وحدها (حتى لو كانت مخزنة كنص "0") لا تُعتبر محتوى فعلياً.
+ const has=v=>{
+  if(v===null||v===undefined)return false;
+  const text=String(v).trim();
+  if(!text)return false;
+  const normalized=text.replace(/[٠-٩۰-۹]/g,d=>String('٠١٢٣٤٥٦٧٨٩۰۱۲۳۴۵۶۷۸۹'.indexOf(d)%10));
+  return !/^0+(?:[.,٫]0+)?$/.test(normalized);
+ };
  const hasPeople=people=>(people||[]).some(p=>has(p.name)||has(p.id));
+
+ // التاريخ وحده لا ينشئ سجلاً.
  x.relief=(x.relief||[]).filter(v=>[v.projectName,v.materialType,v.donor,v.totalCount,v.beneficiaryCount,v.targetGroup,v.absentCount,v.amount].some(has)||hasPeople(v.people)).map(v=>({...v,people:(v.people||[]).filter(p=>has(p.name)||has(p.id))}));
+
  // التاريخ وحده لا ينشئ سجلاً؛ يجب وجود محتوى فعلي في إحدى خانات الزيارة.
  x.visits=(x.visits||[]).filter(v=>[v.entity,v.outcomes,v.participants].some(has));
+
  x.implemented=(x.implemented||[]).filter(v=>[v.projectName,v.place,v.donor,v.attendance,v.absence].some(has)||hasPeople(v.people)).map(v=>({...v,people:(v.people||[]).filter(p=>has(p.name)||has(p.id))}));
+
  // تاريخ التنفيذ وحده لا يُحتسب سجلاً للمشروع قيد التنفيذ.
  x.ongoing=(x.ongoing||[]).filter(v=>[v.projectName,v.materialType,v.donor,v.beneficiaryCount,v.targetGroup].some(has));
  x.problems=(x.problems||[]).filter(v=>has(v.problem)||has(v.solution));
