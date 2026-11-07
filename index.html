@@ -285,7 +285,7 @@ footer{
 <section class="panel no-print" id="monthlyArchivePanel">
 <h2 class="section-heading"><span class="number">★</span> السجل الشهري التراكمي</h2>
 <div class="grid two" style="align-items:end">
- <div class="field"><label for="archiveMonth">الشهر الجاري</label><input type="month" id="archiveMonth"></div>
+ <div class="field"><label for="archiveMonth">الشهر المحدد للإدخال والتجميع والتصدير</label><input type="month" id="archiveMonth"></div>
  <div class="field"><label>حالة الحفظ</label><div id="archiveStatus" class="hint" style="padding:10px;background:#eef6ff;border-radius:8px">يتم حفظ مسودة الإدخال تلقائياً على هذا الجهاز.</div></div>
 </div>
 <div style="display:flex;gap:9px;flex-wrap:wrap;margin-top:12px">
@@ -297,7 +297,7 @@ footer{
  <button class="btn btn-gold" type="button" onclick="downloadMonthlyBackup()">⬇ نسخة احتياطية للشهر</button>
  <label class="btn btn-light" style="cursor:pointer">⬆ استعادة نسخة احتياطية<input type="file" accept="application/json,.json" onchange="restoreMonthlyBackup(event)" hidden></label>
 </div>
-<p class="hint" style="line-height:1.8;margin-top:10px">أضف المعلومات على دفعات خلال الشهر، ثم اضغط «حفظ الدفعة الحالية». يمكنك إعادة تعبئة جميع المعلومات السابقة في خانات الإدخال من زر «استعادة المعلومات السابقة إلى الخانات». وتُحذف السجلات الفارغة تلقائياً عند التصدير، ويمكن تصدير التقرير حتى لو لم توجد أي سجلات.</p>
+<p class="hint" style="line-height:1.8;margin-top:10px">اختر الشهر أولاً؛ لكل شهر أرشيف ومسودة مستقلان. أضف المعلومات على دفعات خلال الشهر، ثم اضغط «حفظ الدفعة الحالية». يعرض الملخص عدد سجلات الشهر المحفوظة والحالية، ويجمع التصدير معلومات الشهر المحدد فقط. يمكنك استعادة المعلومات السابقة إلى الخانات أو تصفير الشهر المحدد وحده. تُحذف السجلات الفارغة تلقائياً عند التصدير.</p>
 <div id="monthlySummary" class="hint" style="margin-top:8px"></div>
 <div id="previousMonthlyInfo" hidden style="margin-top:14px;border:1px solid #d6dee8;border-radius:10px;padding:12px;max-height:620px;overflow:auto;background:#fff">
  <div id="previousMonthlyInfoContent"></div>
@@ -2060,6 +2060,8 @@ const MONTH_DB_NAME="monthly_report_archive_v02";
 const MONTH_DB_STORE="months";
 let monthDbPromise=null;
 let draftSaveTimer=null;
+let activeArchiveMonth=null;
+let archiveMonthSwitching=false;
 
 function openMonthDB(){
  if(monthDbPromise)return monthDbPromise;
@@ -2129,20 +2131,20 @@ function setArchiveStatus(message,isError=false){
 }
 async function refreshMonthlyStatus(){
  try{
-  const month=selectedMonth(),r=await readMonthRecord(month);
-  const totals={};["relief","visits","implemented","ongoing","problems","suggestions"].forEach(k=>totals[k]=(r.batches||[]).reduce((n,b)=>n+(b[k]?.length||0),0));
+  const month=selectedMonth(),r=await readMonthRecord(month),report=cleanReportEntries(await getCumulativeReport());
+  const totals={};["relief","visits","implemented","ongoing","problems","suggestions"].forEach(k=>totals[k]=(report[k]||[]).length);
   const all=Object.values(totals).reduce((a,b)=>a+b,0);
-  document.getElementById("monthlySummary").textContent=`${month}: ${r.batches?.length||0} دفعة محفوظة · ${all} سجل: ${totals.relief} إغاثي، ${totals.visits} زيارة، ${totals.implemented} فعالية/مشروع منفذ، ${totals.ongoing} قيد التنفيذ، ${totals.problems} مشكلة، ${totals.suggestions} مقترح.`;
+  document.getElementById("monthlySummary").textContent=`الشهر ${month}: ${r.batches?.length||0} دفعة محفوظة · ${all} سجل تراكمي (يشمل الإدخالات الحالية غير المحفوظة): ${totals.relief} إغاثي، ${totals.visits} زيارة، ${totals.implemented} فعالية/مشروع منفذ، ${totals.ongoing} قيد التنفيذ، ${totals.problems} مشكلة، ${totals.suggestions} مقترح.`;
  }catch(e){setArchiveStatus("تعذر قراءة السجل المحلي: "+e.message,true);}
 }
-async function saveCurrentDraft(){
+async function saveCurrentDraft(monthOverride=null){
  const date=document.getElementById("reportDate")?.value;
  if(!date)return;
- const month=selectedMonth(),record=await readMonthRecord(month);
+ const month=monthOverride||selectedMonth(),record=await readMonthRecord(month);
  record.draft=cleanReportEntries(getReportData());
  record.meta={directorate:record.draft.directorate,number:record.draft.number,preparer:record.draft.preparer};
  await writeMonthRecord(record);
- setArchiveStatus("تم حفظ مسودة الإدخال تلقائياً على هذا الجهاز.");
+ if(month===selectedMonth())setArchiveStatus("تم حفظ مسودة الإدخال تلقائياً على هذا الجهاز.");
 }
 function scheduleDraftSave(){
  clearTimeout(draftSaveTimer);
@@ -2193,6 +2195,12 @@ async function saveMonthlyBatch(){
 }
 async function loadMonthDraft(){
  const month=selectedMonth(),record=await readMonthRecord(month);
+ // ابدأ دائماً بنموذج نظيف حتى لا تنتقل أي بيانات من الشهر السابق.
+ clearEntryCards();addRelief();addVisit();addImplemented();addOngoing();addProblem();addSuggestion();
+ ["reportDirectorate","reportNumber","reportPreparer"].forEach(id=>{const el=document.getElementById(id);if(el)el.value="";});
+ const dateField=document.getElementById("reportDate");if(dateField)dateField.value=month+"-01";
+ const hideButton=document.getElementById("hideRestoredInfoBtn");if(hideButton)hideButton.hidden=true;
+ document.getElementById("previousMonthlyInfo")?.setAttribute("hidden","");
  if(record.meta){
   if(record.meta.directorate)document.getElementById("reportDirectorate").value=record.meta.directorate;
   if(record.meta.number)document.getElementById("reportNumber").value=record.meta.number;
@@ -2200,10 +2208,13 @@ async function loadMonthDraft(){
  }
  if(record.draft&&reportHasEntries(record.draft)){
   restoreReportToForm(record.draft);
-  setArchiveStatus("تم استرجاع مسودة الشهر تلقائياً.");
+  setArchiveStatus("تم استرجاع مسودة الشهر المحدد تلقائياً.");
  }else if((record.batches||[]).length){
-  setArchiveStatus("تم العثور على دفعات محفوظة لهذا الشهر. أضف دفعة جديدة أو صدّر التقرير التراكمي.");
+  setArchiveStatus("تم العثور على دفعات محفوظة لهذا الشهر فقط. أضف دفعة جديدة أو صدّر التقرير التراكمي.");
+ }else{
+  setArchiveStatus(`الشهر ${month} لا يحتوي على بيانات محفوظة. يمكنك البدء بإدخال معلوماته.`);
  }
+ activeArchiveMonth=month;
  await refreshMonthlyStatus();
 }
 async function restorePreviousMonthlyInfo(){
@@ -2277,6 +2288,9 @@ async function resetSelectedMonth(){
   addRelief();addVisit();addImplemented();addOngoing();addProblem();addSuggestion();
   ["reportDirectorate","reportNumber","reportPreparer"].forEach(id=>{const el=document.getElementById(id);if(el)el.value="";});
   const date=document.getElementById("reportDate");if(date)date.value=month+"-01";
+  activeArchiveMonth=month;
+  const hideButton=document.getElementById("hideRestoredInfoBtn");if(hideButton)hideButton.hidden=true;
+  document.getElementById("previousMonthlyInfo")?.setAttribute("hidden","");
   await refreshMonthlyStatus();
   setArchiveStatus(`تم تصفير جميع معلومات شهر ${month} بنجاح. يمكنك البدء بإدخال بيانات جديدة.`);
  }catch(e){setArchiveStatus("تعذر تصفير الشهر: "+e.message,true);alert("تعذر تصفير الشهر: "+e.message);}
@@ -2300,9 +2314,18 @@ async function restoreMonthlyBackup(event){
  event.target.value="";
 }
 async function changeArchiveMonth(){
- const month=selectedMonth();
- document.getElementById("reportDate").value=month+"-01";
- await loadMonthDraft();
+ if(archiveMonthSwitching)return;
+ const nextMonth=selectedMonth(),previousMonth=activeArchiveMonth;
+ if(nextMonth===previousMonth){await refreshMonthlyStatus();return;}
+ archiveMonthSwitching=true;
+ try{
+  // أوقف أي حفظ مؤجل، واحفظ النموذج الحالي صراحةً في شهره السابق قبل تبديل العرض.
+  clearTimeout(draftSaveTimer);draftSaveTimer=null;
+  if(previousMonth)await saveCurrentDraft(previousMonth);
+  const dateField=document.getElementById("reportDate");if(dateField)dateField.value=nextMonth+"-01";
+  await loadMonthDraft();
+ }catch(e){setArchiveStatus("تعذر تبديل الشهر أو حفظ مسودة الشهر السابق: "+e.message,true);}
+ finally{archiveMonthSwitching=false;}
 }
 
 function fillDemoData(){
@@ -2338,10 +2361,14 @@ function initialize(){
 
     document.getElementById("reportDate").value=getLocalDateString(today);
     document.getElementById("archiveMonth").value=getLocalDateString(today).slice(0,7);
+    activeArchiveMonth=document.getElementById("archiveMonth").value;
     document.getElementById("archiveMonth").addEventListener("change",changeArchiveMonth);
     document.getElementById("reportDate").addEventListener("change",()=>{
       const m=document.getElementById("reportDate").value.slice(0,7);
-      if(m){document.getElementById("archiveMonth").value=m;loadMonthDraft().catch(e=>setArchiveStatus(e.message,true));}
+      if(m&&m!==selectedMonth()){
+        document.getElementById("archiveMonth").value=m;
+        changeArchiveMonth();
+      }
     });
     document.addEventListener("input",e=>{if(e.target.closest("main"))scheduleDraftSave();});
     document.addEventListener("change",e=>{if(e.target.closest("main"))scheduleDraftSave();});
