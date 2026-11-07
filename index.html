@@ -1833,14 +1833,20 @@ async function getNMExcelTemplate(){
 }
 function excelCellAddress(row,col){return XLSX.utils.encode_cell({r:row,c:col});}
 function excelSetCell(ws,row,col,value,styleSource){
-    const address=excelCellAddress(row,col),old=ws[address],source=styleSource?ws[styleSource]:old;
+    const address=excelCellAddress(row,col),old=ws[address];
+    // اعتمد دائماً تنسيق خلية القالب المحددة، حتى عندما تكون قيمة الخلية فارغة.
+    // هذا يمنع ظهور خلايا بلا تعبئة أو حدود في الصفوف الجديدة أو الخلايا غير المطابقة.
+    const source=(styleSource&&ws[styleSource])?ws[styleSource]:old;
+    const sourceStyle=source&&source.s?JSON.parse(JSON.stringify(source.s)):null;
     if(value===null||value===undefined||value===""){
-        if(old){const style=old.s;delete ws[address];if(style)ws[address]={t:"z",s:style};}
+        if(sourceStyle)ws[address]={t:"z",s:sourceStyle};
+        else if(old&&old.s)ws[address]={t:"z",s:old.s};
+        else if(old)delete ws[address];
         return;
     }
     const cell=(typeof value==="number"&&Number.isFinite(value))?{t:"n",v:value}:{t:"s",v:String(value)};
-    if(source&&source.s)cell.s=JSON.parse(JSON.stringify(source.s));
-    if(old&&old.s&&!cell.s)cell.s=old.s;
+    if(sourceStyle)cell.s=sourceStyle;
+    else if(old&&old.s)cell.s=JSON.parse(JSON.stringify(old.s));
     ws[address]=cell;
 }
 function excelClearCellValue(ws,row,col){
