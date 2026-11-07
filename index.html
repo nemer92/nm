@@ -1924,6 +1924,8 @@ async function exportExcel(){
         const reliefTotalCol=3+reliefGroupCount,reliefNotesCol=reliefTotalCol+1;
         const monthLabel=report.date?String(report.date).slice(0,7):selectedMonth();
         excelSetCell(reliefSheet,0,0,"توزيعات شهر ("+monthLabel+")");
+        // إزالة العناوين المكررة أعلى الجدول؛ تبقى حقول الهوية في صف العناوين الرئيسي فقط.
+        [0,1,2].forEach(c=>excelClearCellValue(reliefSheet,1,c));
         ["الرقم","الرقم الذاتي","الاسم الثلاثي"].forEach((v,i)=>excelSetCell(reliefSheet,3,i,v));
         for(let i=0;i<reliefGroupCount;i++){const col=3+i,item=reliefItems[i];if(item){excelSetDateCell(reliefSheet,1,col,item.date,excelCellAddress(1,col));excelSetCell(reliefSheet,2,col,item.projectName||item.materialType||"");excelSetCell(reliefSheet,3,col,"القيمة");}else [1,2,3].forEach(r=>excelClearCellValue(reliefSheet,r,col));}
         excelSetCell(reliefSheet,3,reliefTotalCol,"المجموع");excelSetCell(reliefSheet,3,reliefNotesCol,"الملاحظات");
@@ -1934,15 +1936,26 @@ async function exportExcel(){
 
         // الفعاليات: كل شخص في صف واحد، وكل فعالية عمود مستقل، والحضور بعلامة صح.
         const eventItems=report.implemented||[],eventPeople=excelCollectPeople(eventItems),eventGroupCount=Math.max(2,eventItems.length);
-        if(eventGroupCount>2){const extra=eventGroupCount-2;excelShiftColumns(eventsSheet,5,extra);for(let c=5;c<5+extra;c++)excelEnsureColumnStyle(eventsSheet,c,(c%2===1?3:4),Math.max(XLSX.utils.decode_range(eventsSheet["!ref"]).e.r+1,20));}
-        const eventNotesCol=3+eventGroupCount;
+        // إفساح عمود للمجموع قبل الملاحظات، مع الحفاظ على أعمدة الفعاليات الإضافية.
+        const eventExtraColumns=Math.max(0,eventGroupCount-2)+1;
+        excelShiftColumns(eventsSheet,5,eventExtraColumns);
+        for(let c=5;c<5+eventExtraColumns;c++)excelEnsureColumnStyle(eventsSheet,c,(c%2===1?3:4),Math.max(XLSX.utils.decode_range(eventsSheet["!ref"]).e.r+1,20));
+        const eventTotalCol=3+eventGroupCount,eventNotesCol=eventTotalCol+1;
+        // إزالة العناوين المكررة أعلى الجدول؛ تبقى في صف العناوين الرئيسي فقط.
+        [0,1,2].forEach(c=>excelClearCellValue(eventsSheet,2,c));
         ["الرقم","الرقم الذاتي","الاسم الثلاثي"].forEach((v,i)=>excelSetCell(eventsSheet,5,i,v));
+        excelSetCell(eventsSheet,5,eventTotalCol,"المجموع");
         for(let i=0;i<eventGroupCount;i++){const col=3+i,item=eventItems[i];if(item){excelSetDateCell(eventsSheet,2,col,item.date,excelCellAddress(2,col));excelSetCell(eventsSheet,3,col,item.projectName||"");excelSetCell(eventsSheet,4,col,item.place||"");excelSetCell(eventsSheet,5,col,"MF"+String(i+1).padStart(3,"0"));}else [2,3,4,5].forEach(r=>excelClearCellValue(eventsSheet,r,col));}
         excelSetCell(eventsSheet,5,eventNotesCol,"ملاحظات");
         const eventRows=new Map();
         eventPeople.forEach(([key,person],i)=>{const row=6+i;eventRows.set(key,row);excelSetCell(eventsSheet,row,0,i+1,excelCellAddress(6,0));excelSetCell(eventsSheet,row,1,person.id,excelCellAddress(6,1));excelSetCell(eventsSheet,row,2,person.name,excelCellAddress(6,2));});
         eventItems.forEach((item,i)=>(item.people||[]).forEach(person=>{const key=excelPersonKey(person);if(eventRows.has(key))excelSetCell(eventsSheet,eventRows.get(key),3+i,"✓",excelCellAddress(6,Math.min(3+i,4)));}));
-        eventPeople.forEach((_,i)=>excelSetCell(eventsSheet,6+i,eventNotesCol,"",excelCellAddress(6,5)));
+        eventPeople.forEach((_,i)=>{
+            const row=6+i;
+            const attended=eventItems.reduce((count,_,j)=>count+(eventsSheet[excelCellAddress(row,3+j)]?.v==="✓"?1:0),0);
+            excelSetCell(eventsSheet,row,eventTotalCol,attended,excelCellAddress(6,5));
+            excelSetCell(eventsSheet,row,eventNotesCol,"",excelCellAddress(6,6));
+        });
 
         // الزيارات الرسمية: كل زيارة في صف مستقل.
         (report.visits||[]).forEach((visit,i)=>{const row=3+i;excelSetCell(visitsSheet,row,0,visit.entity||"",excelCellAddress(3,0));excelSetCell(visitsSheet,row,1,visit.date||"",excelCellAddress(3,1));excelSetCell(visitsSheet,row,2,visit.outcomes||"",excelCellAddress(3,2));excelSetCell(visitsSheet,row,3,visit.participants||"",excelCellAddress(3,3));});
