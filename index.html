@@ -94,6 +94,71 @@ header .header-description{color:#e2c98c;font-size:12px;margin:0}
 .btn-light{background:#e9efeb;color:var(--green)}
 .btn-danger{background:#f9e9e8;color:var(--danger)}
 .btn-small{padding:6px 10px;font-size:12px}
+/* تنسيق احترافي لأزرار السجل الشهري التراكمي */
+.monthly-actions{
+    display:grid;
+    grid-template-columns:repeat(4,minmax(180px,1fr));
+    gap:12px;
+    margin-top:14px;
+    align-items:stretch;
+}
+.monthly-action-group{
+    display:flex;
+    flex-direction:column;
+    gap:7px;
+    padding:11px;
+    border:1px solid #dce5e1;
+    border-radius:12px;
+    background:linear-gradient(180deg,#fff 0%,#f8faf9 100%);
+    box-shadow:0 2px 8px rgba(30,55,45,.05);
+}
+.monthly-action-group .group-title{
+    font-size:12px;
+    font-weight:800;
+    color:#53635d;
+    padding:0 4px 2px;
+}
+.monthly-action-group .btn,
+.monthly-action-group label.btn{
+    width:100%;
+    min-height:44px;
+    box-sizing:border-box;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    text-align:center;
+    font-weight:700;
+    border-radius:9px;
+    border:1px solid transparent;
+    transition:transform .15s ease,box-shadow .15s ease,filter .15s ease;
+}
+.monthly-action-group .btn:hover,
+.monthly-action-group label.btn:hover{
+    transform:translateY(-1px);
+    box-shadow:0 5px 12px rgba(30,55,45,.10);
+}
+.monthly-save-group{border-top:4px solid #218739}
+.monthly-save-group .btn-primary{background:#218739;color:#fff;border-color:#1d7732}
+.monthly-save-group .btn-primary:hover{filter:brightness(.95)}
+.monthly-review-group{border-top:4px solid #2878c8}
+.monthly-review-group .btn-light{background:#eaf3fc;color:#1763a8;border-color:#c8def4}
+.monthly-edit-group{border-top:4px solid #7952b3}
+.monthly-edit-group .btn-edit{background:#f1eafb;color:#633b97;border-color:#d9c7ee}
+.monthly-edit-group .btn-edit:hover{filter:brightness(.97)}
+.monthly-danger-group{border-top:4px solid #c43d3d}
+.monthly-danger-group .btn-danger{background:#fff0f0;color:#a92828;border-color:#efcaca}
+.monthly-backup-group{border-top:4px solid #c28a16}
+.monthly-backup-group .btn-gold{background:#fff6df;color:#805a0b;border-color:#ecd79f}
+.monthly-backup-group .btn-backup-restore{background:#e9f2ff;color:#1d5f9f;border-color:#c9ddef}
+.monthly-backup-group .btn-backup-restore:hover{filter:brightness(.97)}
+@media(max-width:1050px){
+    .monthly-actions{grid-template-columns:repeat(2,minmax(180px,1fr))}
+}
+@media(max-width:650px){
+    .monthly-actions{grid-template-columns:1fr;gap:10px}
+    .monthly-action-group{padding:10px}
+}
+
 .add-row{display:flex;justify-content:flex-start;margin:10px 0 5px}
 .people-box{
     margin-top:16px;background:#f4f7f4;border-radius:10px;
@@ -170,7 +235,15 @@ header .header-description{color:#e2c98c;font-size:12px;margin:0}
 .actions-panel{
     display:flex;justify-content:center;gap:12px;flex-wrap:wrap;padding:22px;
 }
-.actions-panel .btn{min-width:220px;padding:13px 20px;font-size:15px}
+.actions-panel .btn{min-width:220px;padding:13px 20px;font-size:15px;border:1px solid transparent;box-shadow:0 4px 10px rgba(25,55,46,.08)}
+.demo-word-btn{background:#eaf3ff;color:#15579a;border-color:#c6dcf3}
+.demo-word-btn:hover{background:#dfeeff;box-shadow:0 6px 14px rgba(21,87,154,.16)}
+.demo-excel-btn{background:#e9f7ee;color:#18733c;border-color:#c6e6d0}
+.demo-excel-btn:hover{background:#def2e5;box-shadow:0 6px 14px rgba(24,115,60,.16)}
+.demo-fill-btn{background:#f3eaff;color:#6b3fa0;border-color:#dac6ef}
+.demo-fill-btn:hover{background:#eadcff;box-shadow:0 6px 14px rgba(107,63,160,.16)}
+.demo-clear-btn{background:#fff0f0;color:#a62e2e;border-color:#edcaca}
+.demo-clear-btn:hover{background:#ffe5e5;box-shadow:0 6px 14px rgba(166,46,46,.16)}
 footer{
     text-align:center;background:var(--dark);color:#e6ebe7;
     padding:15px 12px;font-size:12px;margin-top:35px;line-height:1.9;
@@ -288,15 +361,30 @@ footer{
  <div class="field"><label for="archiveMonth">الشهر المحدد للإدخال والتجميع والتصدير</label><input type="month" id="archiveMonth"></div>
  <div class="field"><label>حالة الحفظ</label><div id="archiveStatus" class="hint" style="padding:10px;background:#eef6ff;border-radius:8px">يتم حفظ مسودة الإدخال تلقائياً على هذا الجهاز.</div></div>
 </div>
-<div style="display:flex;gap:9px;flex-wrap:wrap;margin-top:12px">
- <button class="btn btn-primary" type="button" onclick="saveMonthlyBatch()">💾 حفظ الدفعة الحالية للشهر</button>
- <button class="btn btn-light" type="button" onclick="refreshMonthlyStatus()">↻ تحديث ملخص الشهر</button>
- <button class="btn btn-light" type="button" id="togglePreviousInfoBtn" onclick="restorePreviousMonthlyInfo()">↩ استعادة المعلومات السابقة إلى الخانات</button>
- <button class="btn btn-primary" type="button" id="saveEditedCumulativeBtn" onclick="saveEditedCumulative()" hidden>💾 حفظ التعديلات على التراكمي</button>
- <button class="btn btn-danger" type="button" id="hideRestoredInfoBtn" onclick="hideRestoredMonthlyInfo()" hidden>✕ إخفاء المعلومات السابقة المستعادة من الخانات</button>
- <button class="btn btn-danger" type="button" onclick="resetSelectedMonth()">🗑 تصفير معلومات الشهر بالكامل</button>
- <button class="btn btn-gold" type="button" onclick="downloadMonthlyBackup()">⬇ نسخة احتياطية للشهر</button>
- <label class="btn btn-light" style="cursor:pointer">⬆ استعادة نسخة احتياطية<input type="file" accept="application/json,.json" onchange="restoreMonthlyBackup(event)" hidden></label>
+<div class="monthly-actions" aria-label="أدوات السجل الشهري التراكمي">
+ <div class="monthly-action-group monthly-save-group">
+  <div class="group-title">الحفظ وإدارة الدفعات</div>
+  <button class="btn btn-primary" type="button" onclick="saveMonthlyBatch()">💾 حفظ الدفعة الحالية للشهر</button>
+ </div>
+ <div class="monthly-action-group monthly-review-group">
+  <div class="group-title">المراجعة والمتابعة</div>
+  <button class="btn btn-light" type="button" onclick="refreshMonthlyStatus()">↻ تحديث ملخص الشهر</button>
+ </div>
+ <div class="monthly-action-group monthly-edit-group">
+  <div class="group-title">استعادة وتعديل التراكمي</div>
+  <button class="btn btn-edit" type="button" id="togglePreviousInfoBtn" onclick="restorePreviousMonthlyInfo()">↩ استعادة المعلومات السابقة إلى الخانات</button>
+  <button class="btn btn-edit" type="button" id="saveEditedCumulativeBtn" onclick="saveEditedCumulative()" hidden>💾 حفظ التعديلات على التراكمي</button>
+  <button class="btn btn-danger" type="button" id="hideRestoredInfoBtn" onclick="hideRestoredMonthlyInfo()" hidden>✕ إخفاء المعلومات السابقة المستعادة من الخانات</button>
+ </div>
+ <div class="monthly-action-group monthly-backup-group">
+  <div class="group-title">النسخ الاحتياطي</div>
+  <button class="btn btn-gold" type="button" onclick="downloadMonthlyBackup()">⬇ تنزيل نسخة احتياطية للشهر</button>
+  <label class="btn btn-backup-restore" style="cursor:pointer">⬆ استعادة نسخة احتياطية<input type="file" accept="application/json,.json" onchange="restoreMonthlyBackup(event)" hidden></label>
+ </div>
+ <div class="monthly-action-group monthly-danger-group">
+  <div class="group-title">إجراءات حساسة</div>
+  <button class="btn btn-danger" type="button" onclick="resetSelectedMonth()">🗑 تصفير معلومات الشهر بالكامل</button>
+ </div>
 </div>
 <p class="hint" style="line-height:1.8;margin-top:10px">اختر الشهر أولاً؛ لكل شهر أرشيف ومسودة مستقلان. أضف المعلومات على دفعات خلال الشهر، ثم اضغط «حفظ الدفعة الحالية». يعرض الملخص عدد سجلات الشهر المحفوظة والحالية، ويجمع التصدير معلومات الشهر المحدد فقط. يمكنك استعادة المعلومات السابقة إلى الخانات أو تصفير الشهر المحدد وحده. تُحذف السجلات الفارغة تلقائياً عند التصدير.</p>
 <div id="monthlySummary" class="hint" style="margin-top:8px"></div>
@@ -363,10 +451,10 @@ footer{
     ملف Word يحتوي على أقسام التقرير الرسمية دون أسماء المستفيدين أو الحضور أو أرقامهم الذاتية. ملف Excel يُنشأ بالاعتماد على المفرغة NM.xlsx، ويحتوي على أوراق التوزيعات والفعاليات والزيارات الرسمية، مع توزيع بيانات الأشخاص والتواريخ والقيم ضمن أعمدة المفرغة.
 </div>
 <div class="actions-panel">
-    <button class="btn btn-primary" onclick="exportWord()">📄 تصدير التقرير إلى Word (DOCX)</button>
-    <button class="btn btn-gold" onclick="exportExcel()">📊 تصدير البيانات إلى Excel</button>
-    <button class="btn btn-light" onclick="fillDemoData()">🧪 تعبئة تلقائية تجريبية</button>
-    <button class="btn btn-danger" onclick="clearDemoData()">مسح بيانات التجربة</button>
+    <button class="btn demo-word-btn" onclick="exportWord()">📄 تصدير التقرير إلى Word (DOCX)</button>
+    <button class="btn demo-excel-btn" onclick="exportExcel()">📊 تصدير البيانات إلى Excel</button>
+    <button class="btn demo-fill-btn" onclick="fillDemoData()">🧪 تعبئة تلقائية تجريبية</button>
+    <button class="btn demo-clear-btn" onclick="clearDemoData()">🗑 مسح بيانات التجربة</button>
 </div>
 </section>
 
@@ -2383,18 +2471,88 @@ async function changeArchiveMonth(){
 
 function fillDemoData(){
  const hasData=[...document.querySelectorAll(".item-card input,.item-card textarea,.item-card select")].some(e=>e.value.trim());
- if(hasData&&!confirm("سيتم استبدال بيانات الأقسام الحالية ببيانات تجريبية وهمية. هل تريد المتابعة؟"))return;
+ if(hasData&&!confirm("سيتم استبدال بيانات الأقسام الحالية ببيانات تجريبية وهمية شاملة لجميع الخانات. هل تريد المتابعة؟"))return;
  ["reliefContainer","visitsContainer","implementedContainer","ongoingContainer","problemsContainer","suggestionsContainer"].forEach(id=>document.getElementById(id).innerHTML="");
  reliefIndex=visitIndex=implementedIndex=ongoingIndex=problemIndex=suggestionIndex=0;
+ const today=getLocalDateString(new Date());
+ const month=today.slice(0,7);
+ const demoNames=["أحمد محمد علي","محمد خالد حسن","علي محمود إبراهيم","خالد سامر أحمد","سامر وليد يوسف"];
+ const demoIds=["C000001","C000002","C000003","C000004","C000005"];
+ const set=(c,n,v)=>{const e=c?.querySelector(`[data-field="${n}"]`);if(e)e.value=v;};
+ const setPeople=(card,type)=>{
+   const names=card.querySelector(`[data-people-names="${type}"]`);
+   const ids=card.querySelector(`[data-people-ids="${type}"]`);
+   if(!names||!ids)return;
+   names.value=demoNames.join("\n");
+   ids.value=demoIds.join("\n");
+   renderPeopleRows(names.closest(".people-box"),5);
+   updatePeopleCount(names);
+ };
+
+ // بيانات التقرير الأساسية + الشهر المحدد
  document.getElementById("reportDirectorate").value="دمشق";
- addRelief();let r=document.querySelector(".relief-card");
- const set=(c,n,v)=>{const e=c.querySelector(`[data-field="${n}"]`);if(e)e.value=v;};
- set(r,"projectName","توزيعة سلال غذائية تجريبية");set(r,"materialType","سلة غذائية");set(r,"donor","جهة مانحة تجريبية");set(r,"totalCount","10");set(r,"targetGroup","الأسر المستفيدة");set(r,"absentCount","1");set(r,"date",getLocalDateString(new Date()));set(r,"amount","قيمة تجريبية");r.querySelector('[data-people-names="beneficiary"]').value="مستفيد تجريبي أول\nمستفيد تجريبي ثان";r.querySelector('[data-people-ids="beneficiary"]').value="000001\n000002";updatePeopleCount(r.querySelector('[data-people-names="beneficiary"]'));
- addVisit();let v=document.querySelector(".visit-card");set(v,"entity","جهة رسمية تجريبية");set(v,"date",getLocalDateString(new Date()));set(v,"outcomes","متابعة سير العمل وتنسيق الاحتياجات");
- addImplemented();let im=document.querySelector(".implemented-card");set(im,"projectName","فعالية توعوية تجريبية");set(im,"place","دمشق");set(im,"donor","تنفيذ داخلي");set(im,"absence","1");set(im,"date",getLocalDateString(new Date()));im.querySelector('[data-people-names="attendee"]').value="حاضر تجريبي أول\nحاضر تجريبي ثان";im.querySelector('[data-people-ids="attendee"]').value="100001\n100002";updatePeopleCount(im.querySelector('[data-people-names="attendee"]'));
- addOngoing();let o=document.querySelector(".ongoing-card");set(o,"projectName","مشروع قيد التنفيذ التجريبي");set(o,"materialType","تجهيزات");set(o,"donor","جهة تجريبية");set(o,"beneficiaryCount","20");set(o,"targetGroup","المستفيدون");
- addProblem();let pr=document.querySelector(".problem-card");set(pr,"problem","تأخر وصول بعض المواد");set(pr,"solution","التنسيق المبكر مع الجهة المانحة");
- addSuggestion();let su=document.querySelector(".suggestion-card");set(su,"suggestion","اعتماد جدول متابعة شهري موحد");updateCounters();alert("تمت إضافة بيانات تجريبية وهمية. يمكنك تعديلها أو مسحها.");
+ document.getElementById("reportNumber").value="2026/005";
+ document.getElementById("reportDate").value=today;
+ document.getElementById("reportPreparer").value="أحمد محمد علي";
+ document.getElementById("archiveMonth").value=month;
+
+ // 1) المشاريع الإغاثية: تعبئة كل الحقول + خمسة أسماء وأرقام ذاتية
+ addRelief();
+ let r=document.querySelector(".relief-card");
+ set(r,"projectName","توزيعة سلال غذائية تجريبية");
+ set(r,"materialType","سلة غذائية");
+ set(r,"donor","الجهة المانحة التجريبية");
+ set(r,"totalCount","25");
+ set(r,"beneficiaryCount","5");
+ set(r,"targetGroup","الأسر المستفيدة");
+ set(r,"absentCount","1");
+ set(r,"date",today);
+ set(r,"amount","1250 دولار");
+ setPeople(r,"beneficiary");
+
+ // 2) الزيارات الرسمية: تعبئة جميع الخانات
+ addVisit();
+ let v=document.querySelector(".visit-card");
+ set(v,"entity","مديرية الشؤون الاجتماعية");
+ set(v,"date",today);
+ set(v,"outcomes","متابعة سير العمل وتنسيق الاحتياجات والخدمات المقدمة");
+ set(v,"participants","أحمد محمد علي، محمد خالد حسن، علي محمود إبراهيم");
+
+ // 3) المشاريع المنفذة والفعاليات: تعبئة كل الحقول + خمسة أسماء وأرقام ذاتية
+ addImplemented();
+ let im=document.querySelector(".implemented-card");
+ set(im,"projectName","فعالية توعوية مجتمعية تجريبية");
+ set(im,"place","قاعة المركز المجتمعي - دمشق");
+ set(im,"donor","تنفيذ داخلي");
+ set(im,"attendance","5");
+ set(im,"absence","2");
+ set(im,"date",today);
+ setPeople(im,"attendee");
+
+ // 4) المشاريع قيد التنفيذ: تعبئة جميع الحقول
+ addOngoing();
+ let o=document.querySelector(".ongoing-card");
+ set(o,"projectName","مشروع تأهيل وتجهيز المركز");
+ set(o,"materialType","تجهيزات مكتبية");
+ set(o,"donor","جهة داعمة تجريبية");
+ set(o,"beneficiaryCount","20");
+ set(o,"targetGroup","المستفيدون من خدمات المركز");
+ set(o,"executionDate",today);
+
+ // 5) المشاكل والحلول: تعبئة جميع الخانات
+ addProblem();
+ let pr=document.querySelector(".problem-card");
+ set(pr,"problem","تأخر وصول بعض المواد والتجهيزات المطلوبة");
+ set(pr,"solution","التنسيق المبكر مع الجهة المانحة ووضع جدول متابعة أسبوعي");
+
+ // 6) المقترحات: تعبئة الخانة
+ addSuggestion();
+ let su=document.querySelector(".suggestion-card");
+ set(su,"suggestion","اعتماد جدول متابعة شهري موحد وربط مراحل التنفيذ بالمؤشرات الكمية");
+
+ updateCounters();
+ document.getElementById("archiveMonth").dispatchEvent(new Event("change",{bubbles:true}));
+ alert("تمت تعبئة جميع الخانات والحقول ببيانات تجريبية شاملة، مع 5 أسماء ثلاثية و5 أرقام ذاتية بالصيغة C000001 إلى C000005.");
 }
 function clearDemoData(){if(!confirm("سيتم مسح بيانات جميع الأقسام وإعادة كل قسم إلى سجل فارغ واحد. هل تريد المتابعة؟"))return;["reliefContainer","visitsContainer","implementedContainer","ongoingContainer","problemsContainer","suggestionsContainer"].forEach(id=>document.getElementById(id).innerHTML="");reliefIndex=visitIndex=implementedIndex=ongoingIndex=problemIndex=suggestionIndex=0;addRelief();addVisit();addImplemented();addOngoing();addProblem();addSuggestion();updateCounters();alert("تم مسح بيانات الأقسام. بقيت بيانات التقرير الأساسية كما هي.");}
 
