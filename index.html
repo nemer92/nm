@@ -359,7 +359,7 @@ footer{
 <section class="panel no-print">
 <h2 class="section-heading"><span class="number">8</span> تصدير التقرير والبيانات</h2>
 <div class="required-note">
-    ملف Word يحتوي على أقسام التقرير الرسمية دون أسماء المستفيدين أو الحضور أو أرقامهم الذاتية. ملف Excel يحتوي على ورقتين فقط: المشاريع الاغاثية والمشاريع المنفذة، وتتضمن كل ورقة بيانات الأشخاص المرتبطين بكل مشروع.
+    ملف Word يحتوي على أقسام التقرير الرسمية دون أسماء المستفيدين أو الحضور أو أرقامهم الذاتية. ملف Excel يُنشأ بالاعتماد على المفرغة NM.xlsx، ويحتوي على أوراق التوزيعات والفعاليات والزيارات الرسمية، مع توزيع بيانات الأشخاص والتواريخ والقيم ضمن أعمدة المفرغة.
 </div>
 <div class="actions-panel">
     <button class="btn btn-primary" onclick="exportWord()">📄 تصدير التقرير إلى Word (DOCX)</button>
@@ -421,7 +421,7 @@ footer{
         <div class="info-feature"><div class="feature-icon">🤝</div><div><strong>التوزيعات الإغاثية والفعاليات</strong><p>إضافة بيانات التوزيعات والفعاليات وإدخال قوائم المستفيدين، مع إمكانية تنظيم الأسماء والأرقام الذاتية لكل سجل.</p></div></div>
         <div class="info-feature"><div class="feature-icon">📋</div><div><strong>اللصق الذكي من Excel</strong><p>انسخ عمود الاسم الثلاثي وعمود الرقم الذاتي معاً والصقهما في أي مربع من مربعي الأسماء أو الأرقام، وبأي ترتيب؛ تتعرّف الأداة على العمودين وتفرزهما تلقائياً في المكان الصحيح.</p></div></div>
         <div class="info-feature"><div class="feature-icon">📄</div><div><strong>تصدير التقرير إلى Word</strong><p>إنشاء التقرير بالاعتماد على المفرغة المعتمدة NM.docx، حيث تُحمّل تلقائياً من نفس موقع الأداة عند التصدير، دون الحاجة لاختيارها يدوياً.</p></div></div>
-        <div class="info-feature"><div class="feature-icon">📈</div><div><strong>تصدير البيانات إلى Excel</strong><p>تصدير بيانات التقرير وقوائم الأشخاص إلى ملفات Excel منظمة لتسهيل المراجعة والحفظ.</p></div></div>
+        <div class="info-feature"><div class="feature-icon">📈</div><div><strong>تصدير البيانات إلى Excel</strong><p>تعبئة المفرغة المعتمدة NM.xlsx تلقائياً في أوراق التوزيعات والفعاليات والزيارات الرسمية، مع إضافة أعمدة عند الحاجة ووضع علامة ✓ أمام كل مشارك في الفعالية.</p></div></div>
         <div class="info-feature"><div class="feature-icon">⚙️</div><div><strong>الإعدادات وتخصيص الهوية</strong><p>تعديل أسماء الوزارة والمديرية والقسم وعنوان الأداة ووصفها، مع إمكانية تغيير الشعار.</p></div></div>
         <div class="info-feature"><div class="feature-icon">🔢</div><div><strong>توحيد الأرقام</strong><p>تحويل الأرقام العربية والفارسية إلى أرقام إنكليزية موحّدة ضمن الواجهة وبيانات التصدير.</p></div></div>
         <div class="info-feature"><div class="feature-icon">⛶</div><div><strong>عرض مريح للشاشة</strong><p>إمكانية عرض الأداة بكامل الشاشة لتسهيل إدخال البيانات والعمل على التقرير.</p></div></div>
@@ -1819,205 +1819,113 @@ async function exportWord(){
 }
 
 /* =========================
-   تصدير Excel
-   ورقتان فقط بالاسمين المطلوبين
+   تصدير Excel اعتماداً على المفرغة NM.xlsx
+   الأوراق: التوزيعات، الفعاليات، الزيارات الرسمية
 ========================= */
 
-async function exportExcel(){
-    const report=normalizeReportDigits(await getCumulativeReport());
-    if(!await validateReport(report))return;
-
-    if(typeof XLSX==="undefined"){
-        alert("تعذر تحميل مكتبة Excel. تحقق من اتصال الإنترنت.");
+async function getNMExcelTemplate(){
+    const templateUrl = new URL("./NM.xlsx", window.location.href);
+    const response = await fetch(templateUrl.href, {cache:"no-store"});
+    if(!response.ok) throw new Error("تعذر تحميل المفرغة NM.xlsx من الاستضافة (HTTP " + response.status + "). تأكد من رفع الملف بالاسم NM.xlsx بجانب index.html.");
+    const buffer = await response.arrayBuffer();
+    if(buffer.byteLength < 1000) throw new Error("ملف NM.xlsx فارغ أو غير مكتمل.");
+    return XLSX.read(buffer, {type:"array", cellStyles:true, cellDates:false});
+}
+function excelCellAddress(row,col){return XLSX.utils.encode_cell({r:row,c:col});}
+function excelSetCell(ws,row,col,value,styleSource){
+    const address=excelCellAddress(row,col),old=ws[address],source=styleSource?ws[styleSource]:old;
+    if(value===null||value===undefined||value===""){
+        if(old){const style=old.s;delete ws[address];if(style)ws[address]={t:"z",s:style};}
         return;
     }
+    const cell=(typeof value==="number"&&Number.isFinite(value))?{t:"n",v:value}:{t:"s",v:String(value)};
+    if(source&&source.s)cell.s=JSON.parse(JSON.stringify(source.s));
+    if(old&&old.s&&!cell.s)cell.s=old.s;
+    ws[address]=cell;
+}
+function excelClearCellValue(ws,row,col){
+    const address=excelCellAddress(row,col);
+    if(ws[address]){const style=ws[address].s;delete ws[address];if(style)ws[address]={t:"z",s:style};}
+}
+function excelShiftColumns(ws,startCol,amount){
+    if(!amount)return;
+    const keys=Object.keys(ws).filter(k=>/^[A-Z]+[0-9]+$/.test(k));
+    keys.sort((a,b)=>XLSX.utils.decode_cell(b).c-XLSX.utils.decode_cell(a).c);
+    keys.forEach(key=>{const pos=XLSX.utils.decode_cell(key);if(pos.c>=startCol){ws[excelCellAddress(pos.r,pos.c+amount)]=ws[key];delete ws[key];}});
+    if(ws["!merges"])ws["!merges"]=ws["!merges"].map(m=>({s:{r:m.s.r,c:m.s.c>=startCol?m.s.c+amount:m.s.c},e:{r:m.e.r,c:m.e.c>=startCol?m.e.c+amount:m.e.c}}));
+    if(ws["!cols"]){const cols=ws["!cols"].slice();for(let i=cols.length-1;i>=startCol;i--)cols[i+amount]=cols[i];const width=cols[startCol-1]||{wch:18};for(let i=0;i<amount;i++)cols[startCol+i]=JSON.parse(JSON.stringify(width));ws["!cols"]=cols;}
+    if(ws["!ref"]){const range=XLSX.utils.decode_range(ws["!ref"]);if(range.e.c>=startCol)range.e.c+=amount;ws["!ref"]=XLSX.utils.encode_range(range);}
+    if(ws["!autofilter"]&&ws["!autofilter"].ref){try{const range=XLSX.utils.decode_range(ws["!autofilter"].ref);if(range.e.c>=startCol)range.e.c+=amount;ws["!autofilter"].ref=XLSX.utils.encode_range(range);}catch(_){}}
+}
+function excelEnsureColumnStyle(ws,targetCol,sourceCol,maxRow){
+    for(let r=0;r<maxRow;r++){const source=ws[excelCellAddress(r,sourceCol)],address=excelCellAddress(r,targetCol),target=ws[address];if(source&&source.s&&(!target||!target.s)){if(target)target.s=JSON.parse(JSON.stringify(source.s));else ws[address]={t:"z",s:JSON.parse(JSON.stringify(source.s))};}}
+}
+function excelPersonKey(person){
+    const id=toEnglishDigits(String(person?.id||"")).replace(/\s+/g,"").trim();if(id)return "id:"+id;
+    const name=String(person?.name||"").replace(/\s+/g," ").trim().toLowerCase();return name?"name:"+name:"";
+}
+function excelCollectPeople(items){
+    const people=new Map();
+    (items||[]).forEach(item=>(item.people||[]).forEach(person=>{const key=excelPersonKey(person);if(!key)return;if(!people.has(key))people.set(key,{id:toEnglishDigits(String(person.id||"")),name:String(person.name||"").trim()});else{const saved=people.get(key);if(!saved.id&&person.id)saved.id=toEnglishDigits(String(person.id));if(!saved.name&&person.name)saved.name=String(person.name).trim();}}));
+    return Array.from(people.entries());
+}
+function excelDateValue(value){
+    const match=String(value??"").match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if(!match)return value||"";
+    const utc=Date.UTC(Number(match[1]),Number(match[2])-1,Number(match[3]));
+    return Math.floor((utc-Date.UTC(1899,11,30))/86400000);
+}
+function excelAmountValue(value){
+    const raw=toEnglishDigits(String(value??"")).trim();if(!raw)return null;const normalized=raw.replace(/,/g,"").replace(/[٬،]/g,"");
+    return /^[-+]?\d+(?:\.\d+)?$/.test(normalized)?Number(normalized):String(value);
+}
+function excelNumericTotal(values){const present=values.filter(v=>v!==null&&v!==undefined&&v!=="");if(!present.length||present.some(v=>typeof v!=="number"))return "";return present.reduce((sum,v)=>sum+v,0);}
 
+async function exportExcel(){
+    try{
+        const report=normalizeReportDigits(await getCumulativeReport());
+        if(!await validateReport(report))return;
+        if(typeof XLSX==="undefined"){alert("تعذر تحميل مكتبة Excel. تحقق من اتصال الإنترنت.");return;}
+        const wb=await getNMExcelTemplate();
+        const reliefSheet=wb.Sheets["التوزيعات"],eventsSheet=wb.Sheets["الفعاليات"],visitsSheet=wb.Sheets["الزيارات الرسمية"];
+        if(!reliefSheet||!eventsSheet||!visitsSheet)throw new Error("يجب أن تحتوي المفرغة NM.xlsx على الأوراق: التوزيعات، الفعاليات، الزيارات الرسمية.");
 
-    /*
-      الورقة الأولى:
-      المشاريع الاغاثية
-      كل صف يمثل مستفيداً مرتبطاً بمشروعه.
-      إذا لم يوجد مستفيدون، يتم إنشاء صف واحد للمشروع
-      حتى لا تضيع بيانات المشروع من الملف.
-    */
+        // التوزيعات: كل شخص في صف واحد، وكل توزيعة في عمود مستقل.
+        const reliefItems=report.relief||[],reliefPeople=excelCollectPeople(reliefItems),reliefGroupCount=Math.max(2,reliefItems.length);
+        if(reliefGroupCount>2){const extra=reliefGroupCount-2;excelShiftColumns(reliefSheet,5,extra);for(let c=5;c<5+extra;c++)excelEnsureColumnStyle(reliefSheet,c,4,Math.max(XLSX.utils.decode_range(reliefSheet["!ref"]).e.r+1,20));}
+        const reliefTotalCol=3+reliefGroupCount,reliefNotesCol=reliefTotalCol+1;
+        const monthLabel=report.date?String(report.date).slice(0,7):selectedMonth();
+        excelSetCell(reliefSheet,0,0,"توزيعات شهر ("+monthLabel+")");
+        ["الرقم","الرقم الذاتي","الاسم الثلاثي"].forEach((v,i)=>excelSetCell(reliefSheet,3,i,v));
+        for(let i=0;i<reliefGroupCount;i++){const col=3+i,item=reliefItems[i];if(item){excelSetCell(reliefSheet,1,col,excelDateValue(item.date),excelCellAddress(1,col));excelSetCell(reliefSheet,2,col,item.projectName||item.materialType||"");excelSetCell(reliefSheet,3,col,"القيمة");}else [1,2,3].forEach(r=>excelClearCellValue(reliefSheet,r,col));}
+        excelSetCell(reliefSheet,3,reliefTotalCol,"المجموع");excelSetCell(reliefSheet,3,reliefNotesCol,"الملاحظات");
+        const reliefRows=new Map();
+        reliefPeople.forEach(([key,person],i)=>{const row=4+i;reliefRows.set(key,row);excelSetCell(reliefSheet,row,0,i+1,excelCellAddress(4,0));excelSetCell(reliefSheet,row,1,person.id,excelCellAddress(4,1));excelSetCell(reliefSheet,row,2,person.name,excelCellAddress(4,2));});
+        reliefItems.forEach((item,i)=>(item.people||[]).forEach(person=>{const key=excelPersonKey(person);if(reliefRows.has(key))excelSetCell(reliefSheet,reliefRows.get(key),3+i,excelAmountValue(item.amount),excelCellAddress(4,Math.min(3+i,4)));}));
+        reliefPeople.forEach(([key],i)=>{const row=4+i,amounts=reliefItems.map((_,j)=>{const cell=reliefSheet[excelCellAddress(row,3+j)];return cell&&cell.v!==undefined?cell.v:"";});excelSetCell(reliefSheet,row,reliefTotalCol,excelNumericTotal(amounts),excelCellAddress(4,5));excelSetCell(reliefSheet,row,reliefNotesCol,"",excelCellAddress(4,6));});
 
-    const reliefRows=[[
-        "الرقم التسلسلي",
-        "الرقم الذاتي",
-        "الاسم",
-        "اسم المشروع / التوزيعة",
-        "نوع المادة",
-        "الجهة المانحة",
-        "العدد الإجمالي",
-        "عدد المستفيدين",
-        "الفئة المستهدفة",
-        "القيمة / المبلغ",
-        "عدد المتغيبين",
-        "التاريخ",
-        "المديرية"
-    ]];
+        // الفعاليات: كل شخص في صف واحد، وكل فعالية عمود مستقل، والحضور بعلامة صح.
+        const eventItems=report.implemented||[],eventPeople=excelCollectPeople(eventItems),eventGroupCount=Math.max(2,eventItems.length);
+        if(eventGroupCount>2){const extra=eventGroupCount-2;excelShiftColumns(eventsSheet,5,extra);for(let c=5;c<5+extra;c++)excelEnsureColumnStyle(eventsSheet,c,4,Math.max(XLSX.utils.decode_range(eventsSheet["!ref"]).e.r+1,20));}
+        const eventNotesCol=3+eventGroupCount;
+        ["الرقم","الرقم الذاتي","الاسم الثلاثي"].forEach((v,i)=>excelSetCell(eventsSheet,5,i,v));
+        for(let i=0;i<eventGroupCount;i++){const col=3+i,item=eventItems[i];if(item){excelSetCell(eventsSheet,2,col,excelDateValue(item.date),excelCellAddress(2,col));excelSetCell(eventsSheet,3,col,item.projectName||"");excelSetCell(eventsSheet,4,col,item.place||"");excelSetCell(eventsSheet,5,col,"MF"+String(i+1).padStart(3,"0"));}else [2,3,4,5].forEach(r=>excelClearCellValue(eventsSheet,r,col));}
+        excelSetCell(eventsSheet,5,eventNotesCol,"ملاحظات");
+        const eventRows=new Map();
+        eventPeople.forEach(([key,person],i)=>{const row=6+i;eventRows.set(key,row);excelSetCell(eventsSheet,row,0,i+1,excelCellAddress(6,0));excelSetCell(eventsSheet,row,1,person.id,excelCellAddress(6,1));excelSetCell(eventsSheet,row,2,person.name,excelCellAddress(6,2));});
+        eventItems.forEach((item,i)=>(item.people||[]).forEach(person=>{const key=excelPersonKey(person);if(eventRows.has(key))excelSetCell(eventsSheet,eventRows.get(key),3+i,"✓",excelCellAddress(6,Math.min(3+i,4)));}));
+        eventPeople.forEach((_,i)=>excelSetCell(eventsSheet,6+i,eventNotesCol,"",excelCellAddress(6,5)));
 
-    let reliefSerial=0;
-    report.relief.forEach(item=>{
-        const people=item.people.length?item.people:[{name:"",id:""}];
-        people.forEach(person=>{
-            reliefRows.push([
-                ++reliefSerial,
-                person.id,
-                person.name,
-                item.projectName,
-                item.materialType,
-                item.donor,
-                item.totalCount,
-                item.beneficiaryCount,
-                item.targetGroup,
-                item.amount,
-                item.absentCount,
-                item.date,
-                item.directorate||report.directorate
-            ]);
-        });
-    });
+        // الزيارات الرسمية: كل زيارة في صف مستقل.
+        (report.visits||[]).forEach((visit,i)=>{const row=3+i;excelSetCell(visitsSheet,row,0,visit.entity||"",excelCellAddress(3,0));excelSetCell(visitsSheet,row,1,visit.date||"",excelCellAddress(3,1));excelSetCell(visitsSheet,row,2,visit.outcomes||"",excelCellAddress(3,2));excelSetCell(visitsSheet,row,3,visit.participants||"",excelCellAddress(3,3));});
 
-    /*
-      الورقة الثانية:
-      المشاريع المنفذة
-      كل صف يمثل شخصاً حاضراً مرتبطاً بفعاليته.
-      إذا لم يوجد حضور، يتم إنشاء صف واحد للفعالية.
-    */
-
-    const implementedRows=[[
-        "الرقم التسلسلي",
-        "الرقم الذاتي",
-        "الاسم",
-        "اسم المشروع / الفعالية",
-        "المكان",
-        "الجهة المانحة",
-        "عدد الحضور",
-        "عدد الغياب",
-        "التاريخ",
-        "المديرية"
-    ]];
-
-    let implementedSerial=0;
-    report.implemented.forEach(item=>{
-        const people=item.people.length?item.people:[{name:"",id:""}];
-        people.forEach(person=>{
-            implementedRows.push([
-                ++implementedSerial,
-                person.id,
-                person.name,
-                item.projectName,
-                item.place,
-                item.donor,
-                item.attendance,
-                item.absence,
-                item.date,
-                item.directorate||report.directorate
-            ]);
-        });
-    });
-
-    const normalizedReliefRows=normalizeReportDigits(reliefRows);
-    const normalizedImplementedRows=normalizeReportDigits(implementedRows);
-    const wb=XLSX.utils.book_new();
-
-    const wsRelief=XLSX.utils.aoa_to_sheet(normalizedReliefRows);
-    const wsImplemented=XLSX.utils.aoa_to_sheet(normalizedImplementedRows);
-
-    function styleSheet(ws,widths){
-        ws["!views"]=[{rightToLeft:true}];
-
-        ws["!cols"]=widths.map(width=>({wch:width}));
-
-        if(!ws["!ref"])return;
-
-        const range=XLSX.utils.decode_range(ws["!ref"]);
-
-        for(let C=range.s.c;C<=range.e.c;C++){
-            const address=XLSX.utils.encode_cell({r:0,c:C});
-
-            if(ws[address]){
-                ws[address].s={
-                    font:{
-                        bold:true,
-                        color:{rgb:"FFFFFF"},
-                        name:"Arial",
-                        sz:11
-                    },
-                    fill:{
-                        fgColor:{rgb:"244B3D"}
-                    },
-                    alignment:{
-                        horizontal:"center",
-                        vertical:"center",
-                        wrapText:true
-                    },
-                    border:{
-                        top:{style:"thin",color:{rgb:"AAAAAA"}},
-                        bottom:{style:"thin",color:{rgb:"AAAAAA"}},
-                        left:{style:"thin",color:{rgb:"AAAAAA"}},
-                        right:{style:"thin",color:{rgb:"AAAAAA"}}
-                    }
-                };
-            }
-        }
-
-        for(let R=1;R<=range.e.r;R++){
-            for(let C=range.s.c;C<=range.e.c;C++){
-                const address=XLSX.utils.encode_cell({r:R,c:C});
-
-                if(ws[address]){
-                    ws[address].s={
-                        font:{
-                            name:"Arial",
-                            sz:11
-                        },
-                        alignment:{
-                            horizontal:"right",
-                            vertical:"center",
-                            wrapText:true
-                        },
-                        border:{
-                            top:{style:"thin",color:{rgb:"DDDDDD"}},
-                            bottom:{style:"thin",color:{rgb:"DDDDDD"}},
-                            left:{style:"thin",color:{rgb:"DDDDDD"}},
-                            right:{style:"thin",color:{rgb:"DDDDDD"}}
-                        }
-                    };
-                }
-            }
-        }
-
-        ws["!autofilter"]={ref:ws["!ref"]};
-        ws["!freeze"]={xSplit:0,ySplit:1};
-    }
-
-    styleSheet(wsRelief,[
-        16,20,28,30,22,24,15,17,22,20,15,16,18,14,10
-    ]);
-
-    styleSheet(wsImplemented,[
-        16,20,28,30,22,24,15,15,16,18,14,10
-    ]);
-
-    // إضافة الورقتين فقط وبالأسماء المطابقة للاتفاق
-    XLSX.utils.book_append_sheet(
-        wb,
-        wsRelief,
-        "المشاريع الاغاثية"
-    );
-
-    XLSX.utils.book_append_sheet(
-        wb,
-        wsImplemented,
-        "المشاريع المنفذة"
-    );
-
-    XLSX.writeFile(
-        wb,
-        toEnglishDigits(`بيانات_التقرير_${report.directorate}_${report.date}.xlsx`)
-    );
+        [reliefSheet,eventsSheet,visitsSheet].forEach(ws=>{ws["!views"]=[{rightToLeft:true}];});
+        const reliefEndRow=Math.max(4,3+reliefPeople.length),eventEndRow=Math.max(6,5+eventPeople.length),visitEndRow=Math.max(3,2+(report.visits||[]).length);
+        reliefSheet["!ref"]=XLSX.utils.encode_range({s:{r:0,c:0},e:{r:reliefEndRow,c:reliefNotesCol}});
+        eventsSheet["!ref"]=XLSX.utils.encode_range({s:{r:0,c:0},e:{r:eventEndRow,c:eventNotesCol}});
+        visitsSheet["!ref"]=XLSX.utils.encode_range({s:{r:0,c:0},e:{r:visitEndRow,c:3}});
+        XLSX.writeFile(wb,toEnglishDigits(`بيانات_التقرير_${report.directorate}_${report.date}.xlsx`),{cellStyles:true});
+    }catch(error){console.error(error);alert("تعذر تصدير ملف Excel من المفرغة NM.xlsx: "+(error.message||error));}
 }
 
 /* =========================
