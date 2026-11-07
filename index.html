@@ -1872,6 +1872,43 @@ function excelEnsureColumnStyle(ws,targetCol,sourceCol,maxRow){
         }
     }
 }
+
+function excelApplyProfessionalTable(ws,headerRow,firstDataRow,lastDataRow,lastCol,widths){
+    const thin={style:"thin",color:{rgb:"D7E0EA"}};
+    const border={top:thin,bottom:thin,left:thin,right:thin};
+    const headerStyle={
+        font:{name:"Arial",sz:11,bold:true,color:{rgb:"FFFFFF"}},
+        fill:{patternType:"solid",fgColor:{rgb:"23466B"}},
+        alignment:{horizontal:"center",vertical:"center",wrapText:true},
+        border
+    };
+    const bodyStyle={
+        font:{name:"Arial",sz:10,color:{rgb:"243447"}},
+        alignment:{horizontal:"center",vertical:"center",wrapText:true},
+        border
+    };
+    for(let c=0;c<=lastCol;c++){
+        const h=ws[excelCellAddress(headerRow,c)];
+        if(h){h.s=JSON.parse(JSON.stringify(headerStyle));}
+        for(let r=firstDataRow;r<=lastDataRow;r++){
+            const a=excelCellAddress(r,c),cell=ws[a];
+            if(!cell)ws[a]={t:"z",s:JSON.parse(JSON.stringify(bodyStyle))};
+            else{
+                cell.s=JSON.parse(JSON.stringify(bodyStyle));
+                if((r-firstDataRow)%2===1)cell.s.fill={patternType:"solid",fgColor:{rgb:"F1F5F9"}};
+            }
+        }
+        if(ws["!cols"])ws["!cols"][c]={...(ws["!cols"][c]||{}),wch:widths[c]||16};
+    }
+    if(!ws["!rows"])ws["!rows"]=[];
+    ws["!rows"][headerRow]={...(ws["!rows"][headerRow]||{}),hpt:30};
+    for(let r=firstDataRow;r<=lastDataRow;r++)ws["!rows"][r]={...(ws["!rows"][r]||{}),hpt:23};
+    if(lastDataRow>=firstDataRow){
+        ws["!autofilter"]={ref:XLSX.utils.encode_range({s:{r:headerRow,c:0},e:{r:lastDataRow,c:lastCol}})};
+    }
+    ws["!sheetViews"]=[{rightToLeft:true,showGridLines:false}];
+}
+
 function excelPersonKey(person){
     const id=toEnglishDigits(String(person?.id||"")).replace(/\s+/g,"").trim();if(id)return "id:"+id;
     const name=String(person?.name||"").replace(/\s+/g," ").trim().toLowerCase();return name?"name:"+name:"";
@@ -1956,6 +1993,12 @@ async function exportExcel(){
             excelSetCell(eventsSheet,row,eventTotalCol,attended,excelCellAddress(6,5));
             excelSetCell(eventsSheet,row,eventNotesCol,"",excelCellAddress(6,6));
         });
+
+        // تنسيق احترافي موحد: الحقول الأساسية والمجموع والملاحظات أعمدة واضحة.
+        excelApplyProfessionalTable(reliefSheet,3,4,3+reliefPeople.length,reliefNotesCol,
+            [8,16,28,...Array(reliefGroupCount).fill(14),14,28]);
+        excelApplyProfessionalTable(eventsSheet,5,6,5+eventPeople.length,eventNotesCol,
+            [8,16,28,...Array(eventGroupCount).fill(12),12,28]);
 
         // الزيارات الرسمية: كل زيارة في صف مستقل.
         (report.visits||[]).forEach((visit,i)=>{const row=3+i;excelSetCell(visitsSheet,row,0,visit.entity||"",excelCellAddress(3,0));excelSetCell(visitsSheet,row,1,visit.date||"",excelCellAddress(3,1));excelSetCell(visitsSheet,row,2,visit.outcomes||"",excelCellAddress(3,2));excelSetCell(visitsSheet,row,3,visit.participants||"",excelCellAddress(3,3));});
