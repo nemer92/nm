@@ -1858,7 +1858,13 @@ function excelShiftColumns(ws,startCol,amount){
     if(ws["!autofilter"]&&ws["!autofilter"].ref){try{const range=XLSX.utils.decode_range(ws["!autofilter"].ref);if(range.e.c>=startCol)range.e.c+=amount;ws["!autofilter"].ref=XLSX.utils.encode_range(range);}catch(_){}}
 }
 function excelEnsureColumnStyle(ws,targetCol,sourceCol,maxRow){
-    for(let r=0;r<maxRow;r++){const source=ws[excelCellAddress(r,sourceCol)],address=excelCellAddress(r,targetCol),target=ws[address];if(source&&source.s&&(!target||!target.s)){if(target)target.s=JSON.parse(JSON.stringify(source.s));else ws[address]={t:"z",s:JSON.parse(JSON.stringify(source.s))};}}
+    for(let r=0;r<maxRow;r++){
+        const source=ws[excelCellAddress(r,sourceCol)],address=excelCellAddress(r,targetCol),target=ws[address];
+        if(source&&source.s){
+            if(target)target.s=JSON.parse(JSON.stringify(source.s));
+            else ws[address]={t:"z",s:JSON.parse(JSON.stringify(source.s))};
+        }
+    }
 }
 function excelPersonKey(person){
     const id=toEnglishDigits(String(person?.id||"")).replace(/\s+/g,"").trim();if(id)return "id:"+id;
@@ -1892,7 +1898,7 @@ async function exportExcel(){
 
         // التوزيعات: كل شخص في صف واحد، وكل توزيعة في عمود مستقل.
         const reliefItems=report.relief||[],reliefPeople=excelCollectPeople(reliefItems),reliefGroupCount=Math.max(2,reliefItems.length);
-        if(reliefGroupCount>2){const extra=reliefGroupCount-2;excelShiftColumns(reliefSheet,5,extra);for(let c=5;c<5+extra;c++)excelEnsureColumnStyle(reliefSheet,c,4,Math.max(XLSX.utils.decode_range(reliefSheet["!ref"]).e.r+1,20));}
+        if(reliefGroupCount>2){const extra=reliefGroupCount-2;excelShiftColumns(reliefSheet,5,extra);for(let c=5;c<5+extra;c++)excelEnsureColumnStyle(reliefSheet,c,(c%2===1?3:4),Math.max(XLSX.utils.decode_range(reliefSheet["!ref"]).e.r+1,20));}
         const reliefTotalCol=3+reliefGroupCount,reliefNotesCol=reliefTotalCol+1;
         const monthLabel=report.date?String(report.date).slice(0,7):selectedMonth();
         excelSetCell(reliefSheet,0,0,"توزيعات شهر ("+monthLabel+")");
@@ -1906,7 +1912,7 @@ async function exportExcel(){
 
         // الفعاليات: كل شخص في صف واحد، وكل فعالية عمود مستقل، والحضور بعلامة صح.
         const eventItems=report.implemented||[],eventPeople=excelCollectPeople(eventItems),eventGroupCount=Math.max(2,eventItems.length);
-        if(eventGroupCount>2){const extra=eventGroupCount-2;excelShiftColumns(eventsSheet,5,extra);for(let c=5;c<5+extra;c++)excelEnsureColumnStyle(eventsSheet,c,4,Math.max(XLSX.utils.decode_range(eventsSheet["!ref"]).e.r+1,20));}
+        if(eventGroupCount>2){const extra=eventGroupCount-2;excelShiftColumns(eventsSheet,5,extra);for(let c=5;c<5+extra;c++)excelEnsureColumnStyle(eventsSheet,c,(c%2===1?3:4),Math.max(XLSX.utils.decode_range(eventsSheet["!ref"]).e.r+1,20));}
         const eventNotesCol=3+eventGroupCount;
         ["الرقم","الرقم الذاتي","الاسم الثلاثي"].forEach((v,i)=>excelSetCell(eventsSheet,5,i,v));
         for(let i=0;i<eventGroupCount;i++){const col=3+i,item=eventItems[i];if(item){excelSetCell(eventsSheet,2,col,excelDateValue(item.date),excelCellAddress(2,col));excelSetCell(eventsSheet,3,col,item.projectName||"");excelSetCell(eventsSheet,4,col,item.place||"");excelSetCell(eventsSheet,5,col,"MF"+String(i+1).padStart(3,"0"));}else [2,3,4,5].forEach(r=>excelClearCellValue(eventsSheet,r,col));}
@@ -1919,12 +1925,18 @@ async function exportExcel(){
         // الزيارات الرسمية: كل زيارة في صف مستقل.
         (report.visits||[]).forEach((visit,i)=>{const row=3+i;excelSetCell(visitsSheet,row,0,visit.entity||"",excelCellAddress(3,0));excelSetCell(visitsSheet,row,1,visit.date||"",excelCellAddress(3,1));excelSetCell(visitsSheet,row,2,visit.outcomes||"",excelCellAddress(3,2));excelSetCell(visitsSheet,row,3,visit.participants||"",excelCellAddress(3,3));});
 
-        [reliefSheet,eventsSheet,visitsSheet].forEach(ws=>{ws["!views"]=[{rightToLeft:true}];});
-        const reliefEndRow=Math.max(4,3+reliefPeople.length),eventEndRow=Math.max(6,5+eventPeople.length),visitEndRow=Math.max(3,2+(report.visits||[]).length);
-        reliefSheet["!ref"]=XLSX.utils.encode_range({s:{r:0,c:0},e:{r:reliefEndRow,c:reliefNotesCol}});
-        eventsSheet["!ref"]=XLSX.utils.encode_range({s:{r:0,c:0},e:{r:eventEndRow,c:eventNotesCol}});
-        visitsSheet["!ref"]=XLSX.utils.encode_range({s:{r:0,c:0},e:{r:visitEndRow,c:3}});
-        XLSX.writeFile(wb,toEnglishDigits(`بيانات_التقرير_${report.directorate}_${report.date}.xlsx`),{cellStyles:true});
+        // لا نعيد ضبط نطاقات الأوراق أو اتجاهها؛ نترك إعدادات القالب الأصلية كما هي.
+        // نوسّع النطاق فقط عند الحاجة لإضافة صفوف جديدة خارج النطاق الأصلي.
+        const expandSheetRange=(ws,lastRow,lastCol)=>{
+            const range=ws["!ref"]?XLSX.utils.decode_range(ws["!ref"]):{s:{r:0,c:0},e:{r:0,c:0}};
+            range.e.r=Math.max(range.e.r,lastRow);
+            range.e.c=Math.max(range.e.c,lastCol);
+            ws["!ref"]=XLSX.utils.encode_range(range);
+        };
+        expandSheetRange(reliefSheet,Math.max(4,3+reliefPeople.length),reliefNotesCol);
+        expandSheetRange(eventsSheet,Math.max(6,5+eventPeople.length),eventNotesCol);
+        expandSheetRange(visitsSheet,Math.max(3,2+(report.visits||[]).length),3);
+        XLSX.writeFile(wb,toEnglishDigits(`بيانات_التقرير_${report.directorate}_${report.date}.xlsx`),{cellStyles:true,bookSST:true});
     }catch(error){console.error(error);alert("تعذر تصدير ملف Excel من المفرغة NM.xlsx: "+(error.message||error));}
 }
 
