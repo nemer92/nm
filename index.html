@@ -627,8 +627,8 @@ function removeCard(button){
 }
 
 function updateCounters(){
-    document.getElementById("reliefCount").value=
-        document.querySelectorAll("#reliefContainer .relief-card").length;
+    const report=cleanReportEntries(getReportData());
+    document.getElementById("reliefCount").value=report.relief.length;
 }
 
 /* =========================
@@ -937,7 +937,6 @@ function addRelief(){
         ${fieldHTML("عدد المستفيدين","beneficiaryCount","number","يُحسب تلقائياً")}
         ${fieldHTML("الفئة المستهدفة","targetGroup","text","الفئة المستهدفة")}
         ${fieldHTML("عدد المتغيبين","absentCount","number","عدد المتغيبين")}
-        ${directorateSelect()}
         ${fieldHTML("التاريخ","date","date")}
         ${fieldHTML("قيمة / مبلغ التوزيعة","amount","text","مثال: 150 دولار أو 15000")}
     </div>
@@ -1111,7 +1110,6 @@ function getReportData(){
             beneficiaryCount:getValue(card,"beneficiaryCount"),
             targetGroup:getValue(card,"targetGroup"),
             absentCount:getValue(card,"absentCount"),
-            directorate:getValue(card,"directorate")||report.directorate,
             date:getValue(card,"date"),
             amount:getValue(card,"amount"),
             people:getPeople(card,"beneficiary")
@@ -1364,7 +1362,6 @@ function createWordDocument(report){
         x.beneficiaryCount,
         x.targetGroup,
         x.absentCount,
-        x.directorate,
         x.date
     ]);
 
@@ -1516,7 +1513,6 @@ ${sectionHTML("المشاريع الاغاثية",`
             "عدد المستفيدين",
             "الفئة المستهدفة",
             "عدد المتغيبين",
-            "المديرية",
             "التاريخ"
         ],
         reliefRows
@@ -1793,7 +1789,7 @@ async function exportWord(){
   if(tables.length<7)throw new Error("القالب لا يحتوي على الجداول السبعة المطلوبة.");
   // الجدول الأول: إجمالي عدد المشاريع الإغاثية
   const countCells=Array.from(tables[0].getElementsByTagNameNS(ns,"tc"));if(countCells[1])setCellText(countCells[1],report.relief.length);
-  const relief=report.relief.map(x=>[x.projectName,x.materialType,x.donor,x.totalCount,x.beneficiaryCount,x.targetGroup,x.absentCount,x.directorate,x.date]);
+  const relief=report.relief.map(x=>[x.projectName,x.materialType,x.donor,x.totalCount,x.beneficiaryCount,x.targetGroup,x.absentCount,x.date]);
   const visits=report.visits.map(x=>[report.directorate,x.entity,x.date,x.outcomes,x.participants]);
   const implemented=report.implemented.map(x=>[x.projectName,x.place,x.donor,x.attendance,x.absence,x.date,report.directorate]);
   const ongoing=report.ongoing.map(x=>[x.projectName,x.materialType,x.donor,x.beneficiaryCount,x.targetGroup,x.executionDate,report.directorate]);
@@ -2094,16 +2090,20 @@ function selectedMonth(){
  return /^\d{4}-\d{2}/.test(value)?value.slice(0,7):getLocalDateString(new Date()).slice(0,7);
 }
 function reportHasEntries(r){
- return ["relief","visits","implemented","ongoing","problems","suggestions"].some(k=>(r[k]||[]).some(x=>Object.values(x).some(v=>Array.isArray(v)?v.length>0:String(v??"").trim()!=="")));
+ const cleaned=cleanReportEntries(r);
+ return ["relief","visits","implemented","ongoing","problems","suggestions"]
+  .some(k=>(cleaned[k]||[]).length>0);
 }
 function cleanReportEntries(r){
  const x=JSON.parse(JSON.stringify(r||{}));
  const has=v=>String(v??"").trim()!=="";
  const hasPeople=people=>(people||[]).some(p=>has(p.name)||has(p.id));
- x.relief=(x.relief||[]).filter(v=>[v.projectName,v.materialType,v.donor,v.totalCount,v.beneficiaryCount,v.targetGroup,v.absentCount,v.date,v.amount].some(has)||hasPeople(v.people)).map(v=>({...v,people:(v.people||[]).filter(p=>has(p.name)||has(p.id))}));
- x.visits=(x.visits||[]).filter(v=>[v.entity,v.date,v.outcomes,v.participants].some(has));
- x.implemented=(x.implemented||[]).filter(v=>[v.projectName,v.place,v.donor,v.attendance,v.absence,v.date].some(has)||hasPeople(v.people)).map(v=>({...v,people:(v.people||[]).filter(p=>has(p.name)||has(p.id))}));
- x.ongoing=(x.ongoing||[]).filter(v=>[v.projectName,v.materialType,v.donor,v.beneficiaryCount,v.targetGroup,v.executionDate].some(has));
+ x.relief=(x.relief||[]).filter(v=>[v.projectName,v.materialType,v.donor,v.totalCount,v.beneficiaryCount,v.targetGroup,v.absentCount,v.amount].some(has)||hasPeople(v.people)).map(v=>({...v,people:(v.people||[]).filter(p=>has(p.name)||has(p.id))}));
+ // التاريخ وحده لا ينشئ سجلاً؛ يجب وجود محتوى فعلي في إحدى خانات الزيارة.
+ x.visits=(x.visits||[]).filter(v=>[v.entity,v.outcomes,v.participants].some(has));
+ x.implemented=(x.implemented||[]).filter(v=>[v.projectName,v.place,v.donor,v.attendance,v.absence].some(has)||hasPeople(v.people)).map(v=>({...v,people:(v.people||[]).filter(p=>has(p.name)||has(p.id))}));
+ // تاريخ التنفيذ وحده لا يُحتسب سجلاً للمشروع قيد التنفيذ.
+ x.ongoing=(x.ongoing||[]).filter(v=>[v.projectName,v.materialType,v.donor,v.beneficiaryCount,v.targetGroup].some(has));
  x.problems=(x.problems||[]).filter(v=>has(v.problem)||has(v.solution));
  x.suggestions=(x.suggestions||[]).filter(v=>has(v.suggestion));
  return x;
@@ -2168,7 +2168,7 @@ function clearEntryCards(){
 }
 function restoreReportToForm(r){
  clearEntryCards();
- (r.relief||[]).forEach(x=>{addRelief();const c=document.querySelector("#reliefContainer .relief-card:last-child");["projectName","materialType","donor","totalCount","beneficiaryCount","targetGroup","absentCount","directorate","date","amount"].forEach(k=>setField(c,k,x[k]));restorePeople(c,"beneficiary",x.people);});
+ (r.relief||[]).forEach(x=>{addRelief();const c=document.querySelector("#reliefContainer .relief-card:last-child");["projectName","materialType","donor","totalCount","beneficiaryCount","targetGroup","absentCount","date","amount"].forEach(k=>setField(c,k,x[k]));restorePeople(c,"beneficiary",x.people);});
  (r.visits||[]).forEach(x=>{addVisit();const c=document.querySelector("#visitsContainer .visit-card:last-child");["entity","date","outcomes","participants"].forEach(k=>setField(c,k,x[k]));});
  (r.implemented||[]).forEach(x=>{addImplemented();const c=document.querySelector("#implementedContainer .implemented-card:last-child");["projectName","place","donor","attendance","absence","date"].forEach(k=>setField(c,k,x[k]));restorePeople(c,"attendee",x.people);});
  (r.ongoing||[]).forEach(x=>{addOngoing();const c=document.querySelector("#ongoingContainer .ongoing-card:last-child");["projectName","materialType","donor","beneficiaryCount","targetGroup","executionDate"].forEach(k=>setField(c,k,x[k]));});
@@ -2336,7 +2336,7 @@ function fillDemoData(){
  document.getElementById("reportDirectorate").value="دمشق";
  addRelief();let r=document.querySelector(".relief-card");
  const set=(c,n,v)=>{const e=c.querySelector(`[data-field="${n}"]`);if(e)e.value=v;};
- set(r,"projectName","توزيعة سلال غذائية تجريبية");set(r,"materialType","سلة غذائية");set(r,"donor","جهة مانحة تجريبية");set(r,"totalCount","10");set(r,"targetGroup","الأسر المستفيدة");set(r,"absentCount","1");set(r,"directorate","دمشق");set(r,"date",getLocalDateString(new Date()));set(r,"amount","قيمة تجريبية");r.querySelector('[data-people-names="beneficiary"]').value="مستفيد تجريبي أول\nمستفيد تجريبي ثان";r.querySelector('[data-people-ids="beneficiary"]').value="000001\n000002";updatePeopleCount(r.querySelector('[data-people-names="beneficiary"]'));
+ set(r,"projectName","توزيعة سلال غذائية تجريبية");set(r,"materialType","سلة غذائية");set(r,"donor","جهة مانحة تجريبية");set(r,"totalCount","10");set(r,"targetGroup","الأسر المستفيدة");set(r,"absentCount","1");set(r,"date",getLocalDateString(new Date()));set(r,"amount","قيمة تجريبية");r.querySelector('[data-people-names="beneficiary"]').value="مستفيد تجريبي أول\nمستفيد تجريبي ثان";r.querySelector('[data-people-ids="beneficiary"]').value="000001\n000002";updatePeopleCount(r.querySelector('[data-people-names="beneficiary"]'));
  addVisit();let v=document.querySelector(".visit-card");set(v,"entity","جهة رسمية تجريبية");set(v,"date",getLocalDateString(new Date()));set(v,"outcomes","متابعة سير العمل وتنسيق الاحتياجات");
  addImplemented();let im=document.querySelector(".implemented-card");set(im,"projectName","فعالية توعوية تجريبية");set(im,"place","دمشق");set(im,"donor","تنفيذ داخلي");set(im,"absence","1");set(im,"date",getLocalDateString(new Date()));im.querySelector('[data-people-names="attendee"]').value="حاضر تجريبي أول\nحاضر تجريبي ثان";im.querySelector('[data-people-ids="attendee"]').value="100001\n100002";updatePeopleCount(im.querySelector('[data-people-names="attendee"]'));
  addOngoing();let o=document.querySelector(".ongoing-card");set(o,"projectName","مشروع قيد التنفيذ التجريبي");set(o,"materialType","تجهيزات");set(o,"donor","جهة تجريبية");set(o,"beneficiaryCount","20");set(o,"targetGroup","المستفيدون");
